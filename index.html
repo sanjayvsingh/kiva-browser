@@ -130,7 +130,8 @@ nav.tabs button.on { color: var(--text); border-bottom-color: var(--accent); fon
 .tabhelp { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px;
-  display: grid; grid-template-columns: 76px 1fr; gap: 12px; box-shadow: var(--shadow); }
+  display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; box-shadow: var(--shadow); }
+.card .chip { white-space: normal; max-width: 100%; }
 .card img { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; background: var(--surface-2); }
 .card h3 { font-size: 15px; margin: 0; display: flex; justify-content: space-between; gap: 8px; }
 .card h3 a { text-decoration: none; color: var(--text); }
@@ -155,7 +156,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr.gap td:first-child { font-weight: 600; }
 .tablewrap { overflow-x: auto; }
 footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
-@media (max-width: 480px) { .grid { grid-template-columns: 1fr; } .card { grid-template-columns: 60px 1fr; } .card img { width: 60px; height: 60px; } }
+@media (max-width: 480px) { .grid { grid-template-columns: 1fr; } .card { grid-template-columns: 60px minmax(0, 1fr); } .card img { width: 60px; height: 60px; } }
 </style>
 </head>
 <body>
