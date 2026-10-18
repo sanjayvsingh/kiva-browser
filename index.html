@@ -254,7 +254,7 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
     </details>
 
     <details class="sec" data-sec="hidden" id="secHidden" open hidden>
-      <summary>Hidden <span class="count" id="cntHidden"></span></summary>
+      <summary>Excluded <span class="count" id="cntHidden"></span></summary>
       <div class="chiprow" id="excludedChips"></div>
     </details>
 
@@ -389,7 +389,7 @@ function describeSearch(s) {
   if (s.excludeGroup === 'none') parts.push('incl. G7');
   if (s.excludeGroup === 'g20') parts.push('excl. G20');
   const hidden = s.excluded ? s.excluded.country.length + s.excluded.sector.length + s.excluded.activity.length : 0;
-  if (hidden) parts.push(`${hidden} hidden`);
+  if (hidden) parts.push(`${hidden} excluded`);
   return parts.join(' · ');
 }
 
@@ -768,7 +768,7 @@ function renderCriteria() {
   if (+settings.maxLeft) out.push(chip(`≤ $${settings.maxLeft} left`, 'data-reset="maxLeft"'));
   if (+settings.maxDays) out.push(chip(`≤ ${settings.maxDays} days left`, 'data-reset="maxDays"'));
   ['country', 'sector', 'activity'].forEach(dim => settings.excluded[dim].forEach(val =>
-    out.push(chip(`Hiding ${excludedName(dim, val)}`, `data-unexclude="${dim}" data-val="${esc(val)}"`))));
+    out.push(chip(`Excluding ${excludedName(dim, val)}`, `data-unexclude="${dim}" data-val="${esc(val)}"`))));
   const q = $('search').value.trim();
   if (q) out.push(chip(`“${q}”`, 'data-clear="search"'));
   if (state.countryFilter) {
@@ -822,7 +822,7 @@ function excludedName(dim, val) {
 }
 function hideBtn(dim, val) {
   const name = excludedName(dim, val);
-  return `<button class="x" data-exclude="${dim}" data-val="${esc(val)}" title="Hide all loans in this ${DIM_LABEL[dim]}: ${esc(name)}" aria-label="Hide ${esc(name)}">✕</button>`;
+  return `<button class="x" data-exclude="${dim}" data-val="${esc(val)}" title="Exclude all loans in this ${DIM_LABEL[dim]}: ${esc(name)}" aria-label="Exclude ${esc(name)}">✕</button>`;
 }
 function setExcluded(dim, val, hide) {
   const ex = settings.excluded;
@@ -833,14 +833,14 @@ function setExcluded(dim, val, hide) {
 function renderExcluded() {
   const ex = settings.excluded;
   const chips = ['country', 'sector', 'activity'].flatMap(dim => ex[dim].map(val =>
-    `<span class="chip">${esc(excludedName(dim, val))}<button data-unexclude="${dim}" data-val="${esc(val)}" aria-label="Show ${esc(excludedName(dim, val))} again">✕</button></span>`));
+    `<span class="chip">${esc(excludedName(dim, val))}<button data-unexclude="${dim}" data-val="${esc(val)}" aria-label="Include ${esc(excludedName(dim, val))} again">✕</button></span>`));
   $('secHidden').hidden = !chips.length;
   $('excludedChips').innerHTML = chips.join('');
 }
 let toastTimer;
 function showUndo(dim, val) {
   const t = $('toast');
-  t.innerHTML = `Hid all ${esc(excludedName(dim, val))} loans <button data-undo="${dim}" data-val="${esc(val)}">Undo</button>`;
+  t.innerHTML = `Excluded all ${esc(excludedName(dim, val))} loans <button data-undo="${dim}" data-val="${esc(val)}">Undo</button>`;
   t.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.hidden = true; }, 6000);
