@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiva Loan Finder</title>
+<style>
+:root {
+  --bg: #f6f7f4; --surface: #ffffff; --surface-2: #eef1ea; --text: #1d2420; --muted: #5c6860;
+  --border: #d9ded6; --accent: #2e7d4f; --accent-soft: #e1f0e6; --accent-text: #1f5e39;
+  --new: #8a4fd1; --new-soft: #efe5fb; --badge: #b26a00; --badge-soft: #fdf0dc;
+  --fam: #2563a8; --fam-soft: #e2edf9; --warn: #b3261e; --bar: #cfd8cc;
+  --shadow: 0 1px 2px rgba(0,0,0,.06), 0 2px 8px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131714; --surface: #1b211d; --surface-2: #232b25; --text: #e6ebe6; --muted: #9aa69d;
+    --border: #2f3a32; --accent: #5cc286; --accent-soft: #1f3a29; --accent-text: #8fdcab;
+    --new: #b78cf0; --new-soft: #2e2340; --badge: #f0b056; --badge-soft: #3a2c16;
+    --fam: #7fb2ea; --fam-soft: #1c2c3e; --warn: #f28b82; --bar: #344037;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131714; --surface: #1b211d; --surface-2: #232b25; --text: #e6ebe6; --muted: #9aa69d;
+  --border: #2f3a32; --accent: #5cc286; --accent-soft: #1f3a29; --accent-text: #8fdcab;
+  --new: #b78cf0; --new-soft: #2e2340; --badge: #f0b056; --badge-soft: #3a2c16;
+  --fam: #7fb2ea; --fam-soft: #1c2c3e; --warn: #f28b82; --bar: #344037;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--accent-text); }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; }
+h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+h1 span { color: var(--accent); }
+h2 { font-size: 17px; margin: 0 0 8px; }
+.lender { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+input[type=text], input[type=search], select, input[type=number] {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 10px; font: inherit; }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); padding: 6px 12px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme="dark"] button.primary { color: #0d1a12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button.primary { color: #0d1a12; } }
+.status { color: var(--muted); font-size: 13px; min-height: 20px; margin: 8px 0; }
+.status.err { color: var(--warn); }
+.status button.link { border: 0; background: none; padding: 0 0 0 6px; color: var(--accent-text); text-decoration: underline; font-size: inherit; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; box-shadow: var(--shadow); }
+.stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.stat small { color: var(--muted); }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); }
+.filters { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end; }
+.filters > div:first-child { flex-basis: 100%; }
+.filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.filters .checks { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text); font-size: 14px; }
+.filters .checks label { flex-direction: row; align-items: center; color: var(--text); font-size: 14px; gap: 6px; }
+.weights { display: flex; gap: 14px; flex-wrap: wrap; }
+.weights label { min-width: 120px; }
+.weights input { width: 120px; accent-color: var(--accent); }
+.chiprow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; border-radius: 999px;
+  padding: 2px 9px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.chip.new { background: var(--new-soft); color: var(--new); }
+.chip.fam { background: var(--fam-soft); color: var(--fam); }
+.chip.badge { background: var(--badge-soft); color: var(--badge); }
+.chip.urgent { background: var(--accent-soft); color: var(--accent-text); }
+.chip button { border: 0; background: none; padding: 0 0 0 4px; color: inherit; }
+nav.tabs { display: flex; gap: 4px; margin: 16px 0 12px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+nav.tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none;
+  padding: 8px 14px; color: var(--muted); white-space: nowrap; }
+nav.tabs button.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.tabhelp { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px;
+  display: grid; grid-template-columns: 76px 1fr; gap: 12px; box-shadow: var(--shadow); }
+.card img { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; background: var(--surface-2); }
+.card h3 { font-size: 15px; margin: 0; display: flex; justify-content: space-between; gap: 8px; }
+.card h3 a { text-decoration: none; color: var(--text); }
+.card h3 a:hover { text-decoration: underline; }
+.score { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 500; font-size: 12px; }
+.meta { font-size: 13px; color: var(--muted); }
+.use { font-size: 13px; margin: 4px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bar { height: 6px; background: var(--bar); border-radius: 3px; overflow: hidden; margin: 6px 0 2px; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.card .chiprow { margin-top: 6px; }
+.more { text-align: center; margin: 16px 0; }
+.empty { color: var(--muted); padding: 24px; text-align: center; }
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.badgecard { cursor: pointer; text-align: left; padding: 12px; border-radius: 12px; }
+.badgecard.on { border-color: var(--badge); box-shadow: 0 0 0 2px var(--badge-soft); }
+.badgecard .bar i { background: var(--badge); }
+.badgecard p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 500; font-size: 13px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.gap td:first-child { font-weight: 600; }
+.tablewrap { overflow-x: auto; }
+footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
+@media (max-width: 480px) { .grid { grid-template-columns: 1fr; } .card { grid-template-columns: 60px 1fr; } .card img { width: 60px; height: 60px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Kiva <span>Loan Finder</span></h1>
+    <form class="lender" id="lenderForm">
+      <label for="lenderId" class="meta">Lender ID</label>
+      <input type="text" id="lenderId" size="16" autocomplete="off" placeholder="e.g. from kiva.org/lender/…">
+      <button class="primary" type="submit">Load</button>
+      <button type="button" id="themeBtn" title="Toggle light/dark">◐</button>
+    </form>
+  </header>
+  <div class="status" id="status"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <section class="panel">
+    <div class="filters">
+      <div>
+        <div class="meta" style="margin-bottom:4px">Regions</div>
+        <div class="checks" id="regionChecks"></div>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="womenOnly"> Women borrowers only</label>
+        <label><input type="checkbox" id="hideOwned"> Hide loans we're already in</label>
+      </div>
+      <label>Max repayment term
+        <select id="maxTerm">
+          <option value="0">Any</option><option>6</option><option>8</option><option>10</option>
+          <option>12</option><option>14</option><option>18</option><option>24</option><option>36</option>
+        </select>
+      </label>
+      <label title="Share of past loans through this loan's local lender that were never repaid">Max default rate
+        <select id="maxDefault">
+          <option value="100">Any</option><option value="1">1%</option><option value="2">2%</option>
+          <option value="3">3%</option><option value="5">5%</option>
+        </select>
+      </label>
+      <label>Sort
+        <select id="sortBy">
+          <option value="score">Best match</option>
+          <option value="left">Least left to fund</option>
+          <option value="expiring">Expiring soonest</option>
+          <option value="term">Shortest term</option>
+        </select>
+      </label>
+      <label>Search
+        <input type="search" id="search" placeholder="name, use, activity…" size="18">
+      </label>
+    </div>
+    <details style="margin-top:10px">
+      <summary class="meta" style="cursor:pointer">Top picks weighting</summary>
+      <div class="weights" style="margin-top:8px">
+        <label>Familiar <input type="range" min="0" max="100" id="wFam"></label>
+        <label>New to us <input type="range" min="0" max="100" id="wNew"></label>
+        <label>Achievements <input type="range" min="0" max="100" id="wBadge"></label>
+      </div>
+    </details>
+    <div class="chiprow" id="activeChips"></div>
+  </section>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="top" class="on">Top picks</button>
+    <button data-tab="fam">Familiar</button>
+    <button data-tab="new">New to us</button>
+    <button data-tab="badge">Achievements</button>
+    <button data-tab="coverage">Country coverage</button>
+  </nav>
+  <p class="tabhelp" id="tabHelp"></p>
+  <div id="view"></div>
+
+  <footer>
+    Read-only: data comes live from Kiva's public GraphQL API, and nothing is sent anywhere else. Lending happens on kiva.org.
+    Your lender page must be public for your portfolio and badges to load.
+  </footer>
+</div>
+
+<script>
+const API = 'https://gateway.production.kiva.org/graphql';
+const EXCLUDED = new Set(['US', 'CA', 'PR', 'GU', 'VI']);
+const GROUPS = [
+  { id: 'sa', label: 'South America', test: c => c.region === 'South America' },
+  { id: 'ca', label: 'Central America', test: c => c.region === 'Central America' },
+  { id: 'mxc', label: 'Mexico & Caribbean', test: c => c.region === 'North America' },
+  { id: 'row', label: 'Rest of world', test: c => !['South America', 'Central America', 'North America'].includes(c.region) },
+];
+const BADGE_NAMES = {
+  'climate-action': 'Climate Action', 'womens-equality': "Women's Equality", 'refugee-equality': 'Refugee Equality',
+  'basic-needs': 'Basic Needs', 'us-economic-equality': 'U.S. Economic Equality',
+};
+const TAB_HELP = {
+  top: 'A blend of all three goals, using the weighting above. Each card says why it ranks where it does.',
+  fam: 'Loans that look like the ones you already make: your most common countries, sectors and activities.',
+  new: "Loans that broaden your portfolio: countries you've never lent in rank first, then new sectors and activities.",
+  badge: 'Kiva badge progress. Pick a badge to see qualifying loans that also pass your filters. Badges closest to their next tier score highest.',
+  coverage: 'Countries in your selected regions, how many loans you have made there, and how many matching loans are fundraising now.',
+};
+const DEFAULTS = { lender: '', groups: ['sa', 'ca', 'mxc'], womenOnly: true, hideOwned: true,
+  maxTerm: '0', maxDefault: '100', sortBy: 'score', wFam: 30, wNew: 45, wBadge: 25, tab: 'top' };
+const PAGE = 100, CONCURRENCY = 3, SHOW_STEP = 48;
+
+// ---------- state ----------
+let settings = loadSettings();
+const state = {
+  portfolio: null,    // { ids:Set, country:{}, sector:{}, activity:{}, total, name }
+  badges: [],         // [{ id, name, description, progress, next, remaining, tiers, filters, loanIds:Set }]
+  facets: [],         // [{ iso, name, region, count }]
+  pool: [],           // fundraising loans for current groups/women setting
+  poolKey: '', countryFilter: null, badgeFocus: null, shown: SHOW_STEP, loading: false,
+};
+const poolCache = new Map();
+
+function loadSettings() {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem('kivaFinder') || '{}'); } catch (e) {}
+  const p = new URLSearchParams(location.search).get('lender');
+  return { ...DEFAULTS, ...s, ...(p ? { lender: p } : {}) };
+}
+function saveSettings() { try { localStorage.setItem('kivaFinder', JSON.stringify(settings)); } catch (e) {} }
+
+// Downloads are cached in the browser so reopening the page doesn't send another burst of requests to Kiva
+const PROFILE_TTL = 60 * 60 * 1000, POOL_TTL = 15 * 60 * 1000;
+function cacheGet(name, ttl) {
+  try {
+    const v = JSON.parse(localStorage.getItem(name));
+    if (v && Date.now() - v.at < ttl) return v;
+  } catch (e) {}
+  return null;
+}
+function cacheSet(name, value) {
+  try { localStorage.setItem(name, JSON.stringify({ ...value, at: Date.now() })); }
+  catch (e) { try { localStorage.removeItem(name); } catch (e2) {} }
+}
+
+// ---------- api ----------
+async function gql(query, variables, retried) {
+  let r;
+  try {
+    r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables }) });
+  } catch (e) {
+    if (!retried) { await new Promise(res => setTimeout(res, 2000)); return gql(query, variables, true); }
+    // Kiva's firewall answers rate-limited requests with a 403 that has no CORS headers, which surfaces as a network error
+    throw new Error("Couldn't reach Kiva. Kiva may be briefly limiting requests after a lot of reloads; wait a few minutes and press Retry.");
+  }
+  if (!r.ok) throw new Error(`Kiva API returned HTTP ${r.status}`);
+  const j = await r.json();
+  if (j.errors && !j.data) throw new Error(j.errors[0].message);
+  return j.data;
+}
+async function inBatches(tasks) {
+  const out = [];
+  for (let i = 0; i < tasks.length; i += CONCURRENCY) out.push(...await Promise.all(tasks.slice(i, i + CONCURRENCY).map(t => t())));
+  return out;
+}
+
+const PORTFOLIO_Q = `query($id:String!,$offset:Int){ community { lender(publicId:$id){ name loanCount
+  loans(limit:100, offset:$offset){ totalCount values { id geocode{country{isoCode name region}} sector{name} activity{name}
+  } } } } }`;
+
+async function loadPortfolio(id) {
+  const first = await gql(PORTFOLIO_Q, { id, offset: 0 });
+  const lender = first.community.lender;
+  if (!lender) throw new Error(`No public lender page found for "${id}". Check the ID and that the lender page is public.`);
+  let loans = lender.loans.values;
+  const total = lender.loans.totalCount;
+  const rest = [];
+  for (let off = 100; off < total; off += 100) rest.push(() => gql(PORTFOLIO_Q, { id, offset: off }));
+  (await inBatches(rest)).forEach(d => { loans = loans.concat(d.community.lender.loans.values); });
+  const p = { name: lender.name, total, ids: new Set(), country: {}, countryNames: {}, sector: {}, activity: {} };
+  const inc = (o, k) => { if (k != null) o[k] = (o[k] || 0) + 1; };
+  for (const l of loans) {
+    p.ids.add(l.id);
+    const c = l.geocode && l.geocode.country;
+    if (c) { inc(p.country, c.isoCode); p.countryNames[c.isoCode] = c.name; }
+    inc(p.sector, l.sector && l.sector.name);
+    inc(p.activity, l.activity && l.activity.name);  }
+  return p;
+}
+
+async function loadBadges(id) {
+  const d = await gql(`query($id:String){ userAchievementProgress(publicId:$id){ tieredLendingAchievements {
+    id description totalProgressToAchievement tiers { target completedDate } matchingLoans { filters } } } }`, { id });
+  const list = (d.userAchievementProgress && d.userAchievementProgress.tieredLendingAchievements) || [];
+  return list.map(a => {
+    const progress = a.totalProgressToAchievement || 0;
+    const next = a.tiers.find(t => !t.completedDate && t.target > progress) || null;
+    return { id: a.id, name: BADGE_NAMES[a.id] || a.id.replace(/-/g, ' ').replace(/\b\w/g, m => m.toUpperCase()),
+      description: a.description, progress, tiers: a.tiers, next, remaining: next ? next.target - progress : 0,
+      filters: (a.matchingLoans && a.matchingLoans.filters) || [], loanIds: new Set() };
+  });
+}
+
+async function loadFacets() {
+  const d = await gql(`{ lend { countryFacets { count country { isoCode name region } } } }`);
+  return d.lend.countryFacets.filter(f => f.country && !EXCLUDED.has(f.country.isoCode))
+    .map(f => ({ iso: f.country.isoCode, name: f.country.name, region: f.country.region, count: f.count || 0 }));
+}
+
+const POOL_Q = `query($f:[FundraisingLoanSearchFilterInput!],$page:Int){ fundraisingLoans(filters:$f, limit:${PAGE}, pageNumber:$page){
+  totalCount values { id name use loanAmount lenderRepaymentTerm plannedExpirationDate isMatchable matchingText borrowerCount
+  image { url(presetSize:loan_thumbnail) } geocode { country { isoCode name region } } sector { name } activity { name } tags
+  loanFundraisingInfo { fundedAmount reservedAmount }
+  ... on LoanPartner { partner { defaultRate } } } } }`;
+const IDS_Q = `query($f:[FundraisingLoanSearchFilterInput!],$page:Int){ fundraisingLoans(filters:$f, limit:${PAGE}, pageNumber:$page){ totalCount values { id } } }`;
+
+async function fetchAllPages(query, filters, onProgress) {
+  const first = await gql(query, { f: filters, page: 0 });
+  const total = first.fundraisingLoans.totalCount;
+  let values = first.fundraisingLoans.values;
+  const rest = [];
+  for (let page = 1; page * PAGE < total; page++) rest.push(() => gql(query, { f: filters, page }));
+  let done = values.length;
+  const results = [];
+  for (let i = 0; i < rest.length; i += CONCURRENCY) {
+    const chunk = await Promise.all(rest.slice(i, i + CONCURRENCY).map(t => t()));
+    chunk.forEach(d => { results.push(...d.fundraisingLoans.values); done += d.fundraisingLoans.values.length; });
+    if (onProgress) onProgress(done, total);
+  }
+  return values.concat(results).filter(Boolean);
+}
+
+function groupCountries(groups) {
+  return state.facets.filter(f => groups.some(g => GROUPS.find(x => x.id === g).test(f))).map(f => f.iso);
+}
+
+async function loadPool(force) {
+  const isos = groupCountries(settings.groups);
+  const key = settings.lender + '|' + isos.slice().sort().join(',') + '|' + settings.womenOnly;
+  if (key === state.poolKey && !force) return;
+  if (force) poolCache.delete(key);
+  const stored = !force && cacheGet('kivaFinderPool', POOL_TTL);
+  if (!poolCache.has(key) && stored && stored.key === key) {
+    const badgeIds = {};
+    Object.entries(stored.badgeIds).forEach(([id, ids]) => { badgeIds[id] = new Set(ids); });
+    poolCache.set(key, { loans: stored.loans.map(enrich), badgeIds, at: stored.at });
+  }
+  if (!poolCache.has(key)) {
+    if (!isos.length) { poolCache.set(key, { loans: [], badgeIds: {}, at: Date.now() }); }
+    else {
+      const base = { countryIsoCode: { any: isos } };
+      if (settings.womenOnly) base.gender = { eq: 'female' };
+      setStatus('Loading fundraising loans…');
+      const loans = await fetchAllPages(POOL_Q, [base], (n, t) => setStatus(`Loading fundraising loans… ${n} of ${t}`));
+      setStatus('Checking which loans count toward your badges…');
+      const badgeIds = {};
+      await Promise.all(state.badges.filter(b => b.next && b.filters.length).map(async b => {
+        // AND our base filter into each of the badge's OR'd filter entries, intersecting country lists
+        const entries = b.filters.map(f => {
+          const own = f.countryIsoCode && f.countryIsoCode.any;
+          const any = own ? own.filter(c => isos.includes(c)) : isos;
+          return any.length ? { ...f, ...base, countryIsoCode: { any } } : null;
+        }).filter(Boolean);
+        const ids = entries.length ? await fetchAllPages(IDS_Q, entries) : [];
+        badgeIds[b.id] = new Set(ids.map(x => x.id));
+      }));
+      poolCache.set(key, { loans: loans.map(enrich), badgeIds, at: Date.now() });
+      const idLists = {};
+      Object.entries(badgeIds).forEach(([id, set]) => { idLists[id] = [...set]; });
+      cacheSet('kivaFinderPool', { key, loans, badgeIds: idLists });
+    }
+  }
+  const cached = poolCache.get(key);
+  state.pool = cached.loans;
+  state.poolAt = cached.at;
+  state.badges.forEach(b => { b.loanIds = cached.badgeIds[b.id] || new Set(); });
+  state.poolKey = key;
+}
+
+function enrich(l) {
+  const amount = parseFloat(l.loanAmount) || 0;
+  const fi = l.loanFundraisingInfo || {};
+  const left = Math.max(0, amount - (parseFloat(fi.fundedAmount) || 0) - (parseFloat(fi.reservedAmount) || 0));
+  const c = (l.geocode && l.geocode.country) || {};
+  return { ...l, amount, left, iso: c.isoCode, country: c.name, sectorName: l.sector && l.sector.name,
+    activityName: l.activity && l.activity.name, defaultRate: l.partner ? l.partner.defaultRate : null,
+    daysLeft: l.plannedExpirationDate ? Math.max(0, (new Date(l.plannedExpirationDate) - Date.now()) / 864e5) : 99,
+    text: [l.name, l.use, l.activity && l.activity.name, l.sector && l.sector.name, c.name].join(' ').toLowerCase() };
+}
+
+// ---------- scoring ----------
+function maxOf(o) { return Math.max(1, ...Object.values(o)); }
+
+function scoreLoan(l) {
+  const p = state.portfolio;
+  const reasons = [];
+  const cN = p.country[l.iso] || 0, sN = p.sector[l.sectorName] || 0, aN = p.activity[l.activityName] || 0;
+
+  const fam = 0.35 * cN / maxOf(p.country) + 0.35 * sN / maxOf(p.sector) + 0.3 * aN / maxOf(p.activity);
+  const rank = (o, k) => Object.entries(o).sort((a, b) => b[1] - a[1]).findIndex(e => e[0] == k) + 1;
+  if (cN && rank(p.country, l.iso) <= 3) reasons.push(['fam', `Your #${rank(p.country, l.iso)} country`]);
+  if (sN && rank(p.sector, l.sectorName) <= 3) reasons.push(['fam', `Favorite sector: ${l.sectorName}`]);
+  if (aN >= 3) reasons.push(['fam', `${aN} past ${l.activityName} loans`]);
+
+  let nov = 0;
+  if (cN === 0) { nov += 1; reasons.unshift(['new', `New country: ${l.country}`]); }
+  else if (cN <= 2) { nov += 0.6; reasons.unshift(['new', `Only ${cN} loan${cN > 1 ? 's' : ''} in ${l.country}`]); }
+  else if (cN <= 5) nov += 0.3;
+  if (sN === 0) { nov += 0.5; reasons.push(['new', `New sector: ${l.sectorName}`]); } else if (sN <= 2) nov += 0.25;
+  if (aN === 0) { nov += 0.5; reasons.push(['new', `New activity: ${l.activityName}`]); }
+  nov /= 2;
+
+  let badge = 0; const badgeHits = [];
+  for (const b of state.badges) {
+    if (!b.next || !b.loanIds.has(l.id)) continue;
+    badgeHits.push(b.id);
+    badge = Math.max(badge, 1 / Math.sqrt(b.remaining));
+    reasons.push(['badge', `${b.name}: ${b.remaining} to next tier`]);
+  }
+
+  if (l.left > 0 && l.left <= 100) reasons.push(['urgent', `Only $${Math.round(l.left)} left`]);
+  if (l.daysLeft < 5) reasons.push(['urgent', `Expires in ${Math.ceil(l.daysLeft)} day${Math.ceil(l.daysLeft) === 1 ? '' : 's'}`]);
+  if (l.isMatchable) reasons.push(['urgent', 'Matched']);
+
+  const w = settings.wFam + settings.wNew + settings.wBadge || 1;
+  const top = (settings.wFam * fam + settings.wNew * nov + settings.wBadge * badge) / w;
+  return { fam, nov, badge, top, reasons, badgeHits };
+}
+
+function filteredPool() {
+  const q = (document.getElementById('search').value || '').trim().toLowerCase();
+  const maxTerm = +settings.maxTerm, maxDef = +settings.maxDefault;
+  return state.pool.filter(l =>
+    l.left > 0 &&
+    !(settings.hideOwned && state.portfolio.ids.has(l.id)) &&
+    !(maxTerm && l.lenderRepaymentTerm > maxTerm) &&
+    !(maxDef < 100 && l.defaultRate != null && l.defaultRate > maxDef) &&
+    !(state.countryFilter && l.iso !== state.countryFilter) &&
+    !(q && !l.text.includes(q)));
+}
+
+function sortLoans(list, key) {
+  const by = {
+    score: (a, b) => b.s[key] - a.s[key] || a.left - b.left,
+    left: (a, b) => a.left - b.left,
+    expiring: (a, b) => a.daysLeft - b.daysLeft,
+    term: (a, b) => a.lenderRepaymentTerm - b.lenderRepaymentTerm || b.s[key] - a.s[key],
+  }[settings.sortBy];
+  return list.sort(by);
+}
+
+// ---------- render ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = n => '$' + Math.round(n).toLocaleString();
+function setStatus(msg, err, action) {
+  const s = $('status');
+  s.innerHTML = esc(msg) + (action ? ` <button class="link" data-action="${action}">${action}</button>` : '');
+  s.className = 'status' + (err ? ' err' : '');
+}
+
+function renderStats() {
+  const p = state.portfolio;
+  if (!p) { $('stats').innerHTML = ''; return; }
+  const latam = state.facets.filter(f => ['South America', 'Central America', 'North America'].includes(f.region));
+  const covered = latam.filter(f => p.country[f.iso]).length;
+  const available = latam.filter(f => f.count > 0);
+  const gaps = available.filter(f => !p.country[f.iso]).length;
+  const nextBadge = state.badges.filter(b => b.next && b.id !== 'us-economic-equality').sort((a, b) => a.remaining - b.remaining)[0];
+  $('stats').innerHTML = `
+    <div class="stat"><b>${p.total}</b><small>loans by ${esc(p.name)}</small></div>
+    <div class="stat"><b>${Object.keys(p.country).length}</b><small>countries overall</small></div>
+    <div class="stat"><b>${covered} / ${latam.length}</b><small>Latin America &amp; Caribbean countries covered</small></div>
+    <div class="stat"><b>${gaps}</b><small>new-to-you countries with loans available now</small></div>
+    ${nextBadge ? `<div class="stat"><b>${nextBadge.remaining}</b><small>loan${nextBadge.remaining > 1 ? 's' : ''} to the next ${esc(nextBadge.name)} tier</small></div>` : ''}`;
+}
+
+function renderChips() {
+  const chips = [];
+  if (state.countryFilter) {
+    const f = state.facets.find(x => x.iso === state.countryFilter);
+    chips.push(`<span class="chip">Country: ${esc(f ? f.name : state.countryFilter)}<button data-clear="country" aria-label="Clear">✕</button></span>`);
+  }
+  if (state.badgeFocus && settings.tab === 'badge') {
+    const b = state.badges.find(x => x.id === state.badgeFocus);
+    chips.push(`<span class="chip badge">Badge: ${esc(b.name)}<button data-clear="badge" aria-label="Clear">✕</button></span>`);
+  }
+  $('activeChips').innerHTML = chips.join('');
+}
+
+function cardHtml(l) {
+  const pct = l.amount ? Math.round(100 * (l.amount - l.left) / l.amount) : 0;
+  const shownScore = { top: 'top', fam: 'fam', new: 'nov', badge: 'badge' }[settings.tab];
+  const chips = l.s.reasons.slice(0, 5).map(([k, t]) => `<span class="chip ${k}">${esc(t)}</span>`).join('');
+  return `<article class="card">
+    <a href="https://www.kiva.org/lend/${l.id}" target="_blank" rel="noopener"><img loading="lazy" alt="" src="${esc(l.image && l.image.url)}"></a>
+    <div>
+      <h3><a href="https://www.kiva.org/lend/${l.id}" target="_blank" rel="noopener">${esc(l.name)}</a>
+        <span class="score" title="Score for this tab">${Math.round(100 * l.s[shownScore])}</span></h3>
+      <div class="meta">${esc(l.country)} · ${esc(l.sectorName)} / ${esc(l.activityName)}</div>
+      <div class="use">${esc(l.use)}</div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="meta">${money(l.left)} left of ${money(l.amount)} · ${l.lenderRepaymentTerm} mo · ${Math.ceil(l.daysLeft)}d left</div>
+      <div class="chiprow">${chips}</div>
+    </div></article>`;
+}
+
+function renderLoans(list, key) {
+  sortLoans(list, key);
+  if (!list.length) return `<div class="empty">No loans match these filters. Try a longer repayment term, more regions, or clearing the search.</div>`;
+  const shown = list.slice(0, state.shown);
+  return `<div class="meta" style="margin-bottom:8px">${list.length} matching loan${list.length === 1 ? '' : 's'}</div>
+    <div class="grid">${shown.map(cardHtml).join('')}</div>
+    ${list.length > shown.length ? `<div class="more"><button id="moreBtn">Show more (${list.length - shown.length} left)</button></div>` : ''}`;
+}
+
+function renderBadgeTab(list) {
+  const cards = state.badges.map(b => {
+    const done = !b.next;
+    const pct = done ? 100 : Math.round(100 * b.progress / b.next.target);
+    const n = list.filter(l => b.loanIds.has(l.id)).length;
+    const note = done ? 'Every tier complete'
+      : b.id === 'us-economic-equality' ? 'U.S. loans only, which your settings exclude'
+      : `${b.remaining} more to reach ${b.next.target} · ${n} matching loan${n === 1 ? '' : 's'}`;
+    return `<button class="panel badgecard${state.badgeFocus === b.id ? ' on' : ''}" data-badge="${b.id}" ${done ? 'disabled' : ''}>
+      <strong>${esc(b.name)}</strong> <span class="meta">${b.progress} loans</span>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <p>${esc(note)}</p></button>`;
+  }).join('');
+  const subset = state.badgeFocus
+    ? list.filter(l => state.badges.find(b => b.id === state.badgeFocus).loanIds.has(l.id))
+    : list.filter(l => l.s.badge > 0);
+  return `<div class="badges">${cards}</div>${renderLoans(subset, 'badge')}`;
+}
+
+function renderCoverage() {
+  const p = state.portfolio;
+  const isos = new Set(groupCountries(settings.groups));
+  const matching = {};
+  const base = state.countryFilter;
+  state.countryFilter = null;
+  filteredPool().forEach(l => { matching[l.iso] = (matching[l.iso] || 0) + 1; });
+  state.countryFilter = base;
+  const rows = state.facets.filter(f => isos.has(f.iso))
+    .map(f => ({ ...f, mine: p.country[f.iso] || 0, match: matching[f.iso] || 0 }))
+    .filter(r => r.count > 0 || r.mine > 0)
+    .sort((a, b) => (a.mine > 0) - (b.mine > 0) || a.mine - b.mine || b.match - a.match);
+  const maxMine = Math.max(1, ...rows.map(r => r.mine));
+  return `<div class="panel tablewrap"><table>
+    <thead><tr><th>Country</th><th>Region</th><th class="num">Your loans</th><th></th><th class="num">Fundraising now</th><th class="num">Match your filters</th><th></th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="${r.mine ? '' : 'gap'}">
+      <td>${esc(r.name)} ${r.mine ? '' : '<span class="chip new">new</span>'}</td>
+      <td class="meta">${esc(r.region)}</td>
+      <td class="num">${r.mine}</td>
+      <td style="width:120px"><div class="bar"><i style="width:${Math.round(100 * r.mine / maxMine)}%"></i></div></td>
+      <td class="num">${r.count}</td>
+      <td class="num">${r.match}</td>
+      <td>${r.match ? `<button data-country="${r.iso}">Show loans</button>` : ''}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function render() {
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === settings.tab));
+  $('tabHelp').textContent = TAB_HELP[settings.tab];
+  renderChips();
+  if (!state.portfolio) return;
+  const view = $('view');
+  if (settings.tab === 'coverage') { view.innerHTML = renderCoverage(); return; }
+  const list = filteredPool();
+  list.forEach(l => { l.s = scoreLoan(l); });
+  if (settings.tab === 'top') view.innerHTML = renderLoans(list, 'top');
+  else if (settings.tab === 'fam') view.innerHTML = renderLoans(list.filter(l => l.s.fam > 0), 'fam');
+  else if (settings.tab === 'new') view.innerHTML = renderLoans(list.filter(l => l.s.nov > 0), 'nov');
+  else view.innerHTML = renderBadgeTab(list);
+}
+
+// ---------- wiring ----------
+function syncControls() {
+  $('lenderId').value = settings.lender;
+  $('regionChecks').innerHTML = GROUPS.map(g =>
+    `<label><input type="checkbox" value="${g.id}" ${settings.groups.includes(g.id) ? 'checked' : ''}> ${g.label}</label>`).join('');
+  $('womenOnly').checked = settings.womenOnly;
+  $('hideOwned').checked = settings.hideOwned;
+  ['maxTerm', 'maxDefault', 'sortBy', 'wFam', 'wNew', 'wBadge'].forEach(k => { $(k).value = settings[k]; });
+}
+
+async function refreshPool(force) {
+  if (state.loading) return;
+  state.loading = true;
+  try {
+    await loadPool(force);
+    setStatus(`${state.pool.length} fundraising loans · updated ${new Date(state.poolAt).toLocaleTimeString()}`, false, 'Refresh');
+  } catch (e) { setStatus('Could not load loans: ' + e.message, true, 'Retry'); }
+  state.loading = false;
+  state.shown = SHOW_STEP;
+  render();
+}
+
+async function loadProfile(force) {
+  const stored = !force && cacheGet('kivaFinderProfile', PROFILE_TTL);
+  if (stored && stored.lender === settings.lender) {
+    stored.portfolio.ids = new Set(stored.portfolio.ids);
+    stored.badges.forEach(b => { b.loanIds = new Set(); });
+    return stored;
+  }
+  const [portfolio, badges, facets] = await Promise.all([loadPortfolio(settings.lender), loadBadges(settings.lender), loadFacets()]);
+  cacheSet('kivaFinderProfile', { lender: settings.lender, portfolio: { ...portfolio, ids: [...portfolio.ids] },
+    badges: badges.map(({ loanIds, ...b }) => b), facets });
+  return { portfolio, badges, facets };
+}
+
+async function loadAll(force) {
+  settings.lender = $('lenderId').value.trim().replace(/^.*\/lender\//, '').replace(/[/?#].*$/, '');
+  $('lenderId').value = settings.lender;
+  saveSettings();
+  if (!settings.lender) { promptForLender(); return; }
+  state.portfolio = null; state.poolKey = ''; poolCache.clear(); state.countryFilter = null; state.badgeFocus = null;
+  $('view').innerHTML = ''; renderStats();
+  setStatus(`Loading ${settings.lender}'s portfolio and badges…`);
+  try {
+    const { portfolio, badges, facets } = await loadProfile(force);
+    Object.assign(state, { portfolio, badges, facets });
+    renderStats();
+    await refreshPool(force);
+  } catch (e) { setStatus(e.message, true, 'Retry'); }
+}
+
+$('lenderForm').addEventListener('submit', e => { e.preventDefault(); loadAll(true); });
+$('status').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.action === 'Refresh' || !state.portfolio) loadAll(b.dataset.action === 'Refresh');
+  else refreshPool();
+});
+$('regionChecks').addEventListener('change', () => {
+  settings.groups = [...document.querySelectorAll('#regionChecks input:checked')].map(i => i.value);
+  saveSettings(); refreshPool();
+});
+$('womenOnly').addEventListener('change', e => { settings.womenOnly = e.target.checked; saveSettings(); refreshPool(); });
+$('hideOwned').addEventListener('change', e => { settings.hideOwned = e.target.checked; saveSettings(); render(); });
+['maxTerm', 'maxDefault', 'sortBy'].forEach(k => $(k).addEventListener('change', e => { settings[k] = e.target.value; saveSettings(); state.shown = SHOW_STEP; render(); }));
+['wFam', 'wNew', 'wBadge'].forEach(k => $(k).addEventListener('input', e => { settings[k] = +e.target.value; saveSettings(); render(); }));
+let searchTimer;
+$('search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.shown = SHOW_STEP; render(); }, 200); });
+$('tabs').addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  settings.tab = t.dataset.tab; saveSettings(); state.shown = SHOW_STEP; render();
+});
+$('view').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'moreBtn') { state.shown += SHOW_STEP; render(); }
+  else if (b.dataset.country) { state.countryFilter = b.dataset.country; settings.tab = 'top'; state.shown = SHOW_STEP; render(); window.scrollTo(0, 0); }
+  else if (b.dataset.badge) { state.badgeFocus = state.badgeFocus === b.dataset.badge ? null : b.dataset.badge; state.shown = SHOW_STEP; render(); }
+});
+$('activeChips').addEventListener('click', e => {
+  const b = e.target.closest('button[data-clear]'); if (!b) return;
+  if (b.dataset.clear === 'country') state.countryFilter = null; else state.badgeFocus = null;
+  render();
+});
+$('themeBtn').addEventListener('click', () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme = dark ? 'light' : 'dark';
+  try { localStorage.setItem('kivaFinderTheme', root.dataset.theme); } catch (e) {}
+});
+try { const t = localStorage.getItem('kivaFinderTheme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+
+function promptForLender() {
+  state.portfolio = null; renderStats(); $('view').innerHTML = '';
+  setStatus("Enter a Kiva lender ID and press Load. It's the last part of your lender page URL, kiva.org/lender/<id>, and that page must be public.");
+  $('lenderId').focus();
+}
+
+syncControls();
+render();
+if (settings.lender) loadAll(); else promptForLender();
+</script>
+</body>
+</html>
