@@ -7,17 +7,22 @@ A single-page, read-only tool for finding Kiva loans to make, based on a lender'
 - **Achievements**: loans that count toward Kiva badges you're close to the next tier of
 - **Country coverage**: your loans per country next to what's fundraising now
 
-Filters cover region (South America, Central America, Mexico & Caribbean, rest of world; the US and Canada are always excluded), women borrowers only, maximum repayment term, maximum default rate, and hiding loans you're already in.
+Filters cover Kiva's regions (with an option to exclude the U.S. and Canada), women borrowers only, repayment term, default rate, % funded, amount left to fund, days left, and hiding loans you're already in. Searches can be saved by name, and the last few are remembered automatically.
 
 ## Use
 
-Open `index.html` from any static web host (or locally with `py -m http.server`), enter a Kiva lender ID (the last part of `kiva.org/lender/<id>`) and press Load. The lender page must be public. The ID is saved only in the visitor's browser.
+Open `index.html` from any static web host (or locally with `py -m http.server`).
+
+- **Without a lender ID**, loans are ranked by urgency: nearly funded, little left to raise, or expiring soon.
+- **With a lender ID** (the last part of `kiva.org/lender/<id>`; the lender page must be public), you also get the Familiar, New to us, Achievements and Country coverage views, ranked against your own history.
+
+The lender ID, settings and saved searches stay in the visitor's browser.
 
 ## How it works
 
 The page calls Kiva's public GraphQL API (`https://gateway.production.kiva.org/graphql`) directly from the browser. No API key, login or backend is needed, and nothing is sent anywhere else. Lending itself happens on kiva.org.
 
-Downloads are cached in the browser (loans for 15 minutes, portfolio and badges for an hour) because Kiva's firewall briefly blocks clients that send many requests in a short time. Use **Refresh** or **Load** for fresh data, e.g. right after making a loan.
+Downloads are cached in the browser's IndexedDB (loans for 15 minutes, portfolio and badges for an hour) because Kiva's firewall briefly blocks clients that send many requests in a short time. Use **Refresh** or **Load** for fresh data, e.g. right after making a loan.
 
 ## Related
 

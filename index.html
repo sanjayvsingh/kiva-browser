@@ -29,6 +29,7 @@
   --shadow: none;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--text);
   font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 a { color: var(--accent-text); }
@@ -56,6 +57,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); }
 .filters { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end; }
 .filters > div:first-child { flex-basis: 100%; }
+.searchbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.searchbar select { max-width: 100%; min-width: 0; flex: 1 1 260px; }
 .filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .filters .checks { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text); font-size: 14px; }
 .filters .checks label { flex-direction: row; align-items: center; color: var(--text); font-size: 14px; gap: 6px; }
@@ -121,12 +124,19 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
   <div class="stats" id="stats"></div>
 
   <section class="panel">
+    <div class="searchbar">
+      <select id="savedSel" aria-label="Saved and recent searches"></select>
+      <input type="text" id="saveName" placeholder="Name this search" size="18">
+      <button type="button" id="saveBtn">Save search</button>
+      <button type="button" id="delBtn" hidden>Delete</button>
+    </div>
     <div class="filters">
       <div>
         <div class="meta" style="margin-bottom:4px">Regions</div>
-        <div class="checks" id="regionChecks"></div>
+        <div class="checks" id="regionChecks"><span class="meta">Regions appear once a lender is loaded.</span></div>
       </div>
       <div class="checks">
+        <label><input type="checkbox" id="excludeUSCA"> Exclude U.S. &amp; Canada</label>
         <label><input type="checkbox" id="womenOnly"> Women borrowers only</label>
         <label><input type="checkbox" id="hideOwned"> Hide loans we're already in</label>
       </div>
@@ -172,7 +182,7 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
         <input type="search" id="search" placeholder="name, use, activity…" size="18">
       </label>
     </div>
-    <details style="margin-top:10px">
+    <details id="weights" style="margin-top:10px">
       <summary class="meta" style="cursor:pointer">Top picks weighting</summary>
       <div class="weights" style="margin-top:8px">
         <label>Familiar <input type="range" min="0" max="100" id="wFam"></label>
@@ -203,12 +213,10 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
 <script>
 const API = 'https://gateway.production.kiva.org/graphql';
 const EXCLUDED = new Set(['US', 'CA', 'PR', 'GU', 'VI']);
-const GROUPS = [
-  { id: 'sa', label: 'South America', test: c => c.region === 'South America' },
-  { id: 'ca', label: 'Central America', test: c => c.region === 'Central America' },
-  { id: 'mxc', label: 'Mexico & Caribbean', test: c => c.region === 'North America' },
-  { id: 'row', label: 'Rest of world', test: c => !['South America', 'Central America', 'North America'].includes(c.region) },
-];
+// The settings that make up a saved or recent search
+const SEARCH_KEYS = ['regions', 'excludeUSCA', 'womenOnly', 'hideOwned', 'maxTerm', 'maxDefault', 'minFunded',
+  'maxLeft', 'maxDays', 'sortBy', 'wFam', 'wNew', 'wBadge', 'wUrg'];
+const RECENT_MAX = 5;
 const BADGE_NAMES = {
   'climate-action': 'Climate Action', 'womens-equality': "Women's Equality", 'refugee-equality': 'Refugee Equality',
   'basic-needs': 'Basic Needs', 'us-economic-equality': 'U.S. Economic Equality',
@@ -219,8 +227,10 @@ const TAB_HELP = {
   new: "Loans that broaden your portfolio: countries you've never lent in rank first, then new sectors and activities.",
   badge: 'Kiva badge progress. Pick a badge to see qualifying loans that also pass your filters. Badges closest to their next tier score highest.',
   coverage: 'Countries in your selected regions, how many loans you have made there, and how many matching loans are fundraising now.',
+  anon: 'Ranked by urgency: loans that are nearly funded, have little left to raise, or expire soon. Enter a Kiva lender ID above to rank by your own lending history and unlock the Familiar, New to us, Achievements and Country coverage tabs.',
 };
-const DEFAULTS = { lender: '', groups: ['sa', 'ca', 'mxc'], womenOnly: true, hideOwned: true,
+// regions: null means every region (filled in once Kiva's region list has loaded)
+const DEFAULTS = { lender: '', regions: null, excludeUSCA: true, womenOnly: true, hideOwned: true,
   maxTerm: '0', maxDefault: '100', minFunded: '0', maxLeft: '0', maxDays: '0', sortBy: 'score',
   wFam: 30, wNew: 45, wBadge: 25, wUrg: 15, tab: 'top' };
 const PAGE = 100, CONCURRENCY = 3, SHOW_STEP = 48;
@@ -239,10 +249,73 @@ const poolCache = new Map();
 function loadSettings() {
   let s = {};
   try { s = JSON.parse(localStorage.getItem('kivaFinder') || '{}'); } catch (e) {}
+  // Older versions stored fixed region groups; map them to Kiva's region names
+  if (s.groups && !s.regions) {
+    const map = { sa: ['South America'], ca: ['Central America'], mxc: ['North America'],
+      row: ['Africa', 'Asia', 'Eastern Europe', 'Middle East', 'Oceania'] };
+    s.regions = s.groups.flatMap(g => map[g] || []);
+  }
+  delete s.groups;
   const p = new URLSearchParams(location.search).get('lender');
   return { ...DEFAULTS, ...s, ...(p ? { lender: p } : {}) };
 }
 function saveSettings() { try { localStorage.setItem('kivaFinder', JSON.stringify(settings)); } catch (e) {} }
+
+// ---------- saved and recent searches ----------
+function loadSearches() {
+  try { const v = JSON.parse(localStorage.getItem('kivaFinderSearches')); if (v) return v; } catch (e) {}
+  return { saved: [], recent: [] };
+}
+function storeSearches(v) { try { localStorage.setItem('kivaFinderSearches', JSON.stringify(v)); } catch (e) {} }
+function currentSearch() { const s = {}; SEARCH_KEYS.forEach(k => { s[k] = settings[k]; }); return s; }
+function sameSearch(a, b) { return SEARCH_KEYS.every(k => JSON.stringify(a[k]) === JSON.stringify(b[k])); }
+
+function describeSearch(s) {
+  const all = allRegions();
+  const parts = [!s.regions || (all.length && all.every(r => s.regions.includes(r))) ? 'All regions'
+    : s.regions.length ? s.regions.join(', ') : 'No regions'];
+  if (s.womenOnly) parts.push('women');
+  if (+s.maxTerm) parts.push(`≤${s.maxTerm} mo`);
+  if (+s.minFunded) parts.push(`≥${s.minFunded}% funded`);
+  if (+s.maxLeft) parts.push(`≤$${s.maxLeft} left`);
+  if (+s.maxDays) parts.push(`≤${s.maxDays} days`);
+  if (+s.maxDefault < 100) parts.push(`default ≤${s.maxDefault}%`);
+  if (!s.excludeUSCA) parts.push('incl. U.S./Canada');
+  return parts.join(' · ');
+}
+
+let recentTimer;
+// Called after any change to a search setting: remember it, and add it to recent searches once it settles
+function searchChanged() {
+  saveSettings();
+  clearTimeout(recentTimer);
+  recentTimer = setTimeout(() => {
+    const v = loadSearches(), s = currentSearch();
+    v.recent = [s, ...v.recent.filter(r => !sameSearch(r, s))].slice(0, RECENT_MAX);
+    storeSearches(v);
+    renderSearches();
+  }, 3000);
+}
+
+function renderSearches() {
+  const v = loadSearches(), cur = currentSearch();
+  const savedIdx = v.saved.findIndex(x => sameSearch(x.s, cur));
+  const opt = (val, label, sel) => `<option value="${val}"${sel ? ' selected' : ''}>${esc(label)}</option>`;
+  $('savedSel').innerHTML = opt('', v.saved.length || v.recent.length ? 'Saved & recent searches…' : 'No saved searches yet', savedIdx < 0)
+    + (v.saved.length ? `<optgroup label="Saved">${v.saved.map((x, i) => opt('s' + i, x.name, i === savedIdx)).join('')}</optgroup>` : '')
+    + (v.recent.length ? `<optgroup label="Recent">${v.recent.map((r, i) => opt('r' + i, describeSearch(r))).join('')}</optgroup>` : '');
+  $('delBtn').hidden = savedIdx < 0;
+  $('delBtn').dataset.idx = savedIdx;
+}
+
+function applySearch(s) {
+  Object.assign(settings, s);
+  saveSettings();
+  syncControls();
+  renderRegions();
+  renderSearches();
+  refreshPool();
+}
 
 // Downloads are cached in the browser so reopening the page doesn't send another burst of requests to Kiva
 const PROFILE_TTL = 60 * 60 * 1000, POOL_TTL = 15 * 60 * 1000;
@@ -257,6 +330,29 @@ function cacheSet(name, value) {
   try { localStorage.setItem(name, JSON.stringify({ ...value, at: Date.now() })); }
   catch (e) { try { localStorage.removeItem(name); } catch (e2) {} }
 }
+// The loan pool can be several MB, more than localStorage allows, so it lives in IndexedDB
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const r = indexedDB.open('kivaFinder', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('cache');
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+async function idbGet(k) {
+  try {
+    const db = await idbOpen();
+    return await new Promise(res => {
+      const q = db.transaction('cache').objectStore('cache').get(k);
+      q.onsuccess = () => res(q.result || null);
+      q.onerror = () => res(null);
+    });
+  } catch (e) { return null; }
+}
+async function idbSet(k, v) {
+  try { (await idbOpen()).transaction('cache', 'readwrite').objectStore('cache').put(v, k); } catch (e) {}
+}
+try { localStorage.removeItem('kivaFinderPool'); localStorage.removeItem('kivaFinderProfile'); } catch (e) {}
 
 // ---------- api ----------
 async function gql(query, variables, retried) {
@@ -319,13 +415,13 @@ async function loadBadges(id) {
 
 async function loadFacets() {
   const d = await gql(`{ lend { countryFacets { count country { isoCode name region } } } }`);
-  return d.lend.countryFacets.filter(f => f.country && !EXCLUDED.has(f.country.isoCode))
+  return d.lend.countryFacets.filter(f => f.country && f.country.region)
     .map(f => ({ iso: f.country.isoCode, name: f.country.name, region: f.country.region, count: f.count || 0 }));
 }
 
 const POOL_Q = `query($f:[FundraisingLoanSearchFilterInput!],$page:Int){ fundraisingLoans(filters:$f, limit:${PAGE}, pageNumber:$page){
-  totalCount values { id name use loanAmount lenderRepaymentTerm plannedExpirationDate isMatchable matchingText borrowerCount
-  image { url(presetSize:loan_thumbnail) } geocode { country { isoCode name region } } sector { name } activity { name } tags
+  totalCount values { id name use loanAmount lenderRepaymentTerm plannedExpirationDate isMatchable
+  image { url(presetSize:loan_thumbnail) } geocode { country { isoCode name region } } sector { name } activity { name }
   loanFundraisingInfo { fundedAmount reservedAmount }
   ... on LoanPartner { partner { defaultRate } } } } }`;
 const IDS_Q = `query($f:[FundraisingLoanSearchFilterInput!],$page:Int){ fundraisingLoans(filters:$f, limit:${PAGE}, pageNumber:$page){ totalCount values { id } } }`;
@@ -347,8 +443,10 @@ async function fetchAllPages(query, filters, onProgress) {
   return values;
 }
 
-function groupCountries(groups) {
-  return state.facets.filter(f => groups.some(g => GROUPS.find(x => x.id === g).test(f))).map(f => f.iso);
+function allRegions() { return [...new Set(state.facets.map(f => f.region))].sort(); }
+function regionCountries() {
+  const regions = settings.regions || allRegions();
+  return state.facets.filter(f => regions.includes(f.region) && !(settings.excludeUSCA && EXCLUDED.has(f.iso))).map(f => f.iso);
 }
 
 // AND our base filter into each of the badge's OR'd filter entries, intersecting country lists
@@ -369,15 +467,15 @@ async function loadBadgeIds(isos, base) {
 // seq identifies this load; if settings change mid-load a newer load takes over and this one stops
 async function loadPool(force, seq) {
   const current = () => seq === state.loadSeq;
-  const isos = groupCountries(settings.groups);
+  const isos = regionCountries();
   const key = settings.lender + '|' + isos.slice().sort().join(',') + '|' + settings.womenOnly;
   if (key === state.poolKey && !force) return;
   if (force) poolCache.delete(key);
-  const stored = !force && cacheGet('kivaFinderPool', POOL_TTL);
-  if (!poolCache.has(key) && stored && stored.key === key) {
-    const badgeIds = {};
-    Object.entries(stored.badgeIds).forEach(([id, ids]) => { badgeIds[id] = new Set(ids); });
-    poolCache.set(key, { loans: stored.loans.map(enrich), badgeIds, at: stored.at });
+  if (!force && !poolCache.has(key)) {
+    const stored = await idbGet('pool');
+    if (!current()) return;
+    if (stored && stored.key === key && Date.now() - stored.at < POOL_TTL)
+      poolCache.set(key, { loans: stored.loans.map(enrich), badgeIds: stored.badgeIds, at: stored.at });
   }
   if (!poolCache.has(key)) {
     if (!isos.length) { poolCache.set(key, { loans: [], badgeIds: {}, at: Date.now() }); }
@@ -401,9 +499,7 @@ async function loadPool(force, seq) {
       });
       if (!current()) return;
       poolCache.set(key, { loans: state.pool, badgeIds, at: Date.now() });
-      const idLists = {};
-      Object.entries(badgeIds).forEach(([id, set]) => { idLists[id] = [...set]; });
-      cacheSet('kivaFinderPool', { key, loans, badgeIds: idLists });
+      idbSet('pool', { key, loans, badgeIds, at: Date.now() });
     }
   }
   const cached = poolCache.get(key);
@@ -461,6 +557,8 @@ function scoreLoan(l) {
   if (l.daysLeft < 5) reasons.push(['urgent', `Expires in ${Math.ceil(l.daysLeft)} day${Math.ceil(l.daysLeft) === 1 ? '' : 's'}`]);
   if (l.isMatchable) reasons.push(['urgent', 'Matched']);
 
+  // Without a lender there is no history to compare against, so rank on urgency alone
+  if (!settings.lender) return { fam: 0, nov: 0, badge: 0, urg, top: urg, reasons: reasons.filter(r => r[0] === 'urgent'), badgeHits };
   const w = settings.wFam + settings.wNew + settings.wBadge + settings.wUrg || 1;
   const top = (settings.wFam * fam + settings.wNew * nov + settings.wBadge * badge + settings.wUrg * urg) / w;
   return { fam, nov, badge, urg, top, reasons, badgeHits };
@@ -497,6 +595,9 @@ function sortLoans(list, key) {
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => '$' + Math.round(n).toLocaleString();
+// e.g. 11:00a, 2:05p
+const shortTime = t => { const d = new Date(t), h = d.getHours();
+  return `${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}${h < 12 ? 'a' : 'p'}`; };
 function setStatus(msg, err, action) {
   const s = $('status');
   s.innerHTML = esc(msg) + (action ? ` <button class="link" data-action="${action}">${action}</button>` : '');
@@ -505,16 +606,17 @@ function setStatus(msg, err, action) {
 
 function renderStats() {
   const p = state.portfolio;
-  if (!p) { $('stats').innerHTML = ''; return; }
-  const latam = state.facets.filter(f => ['South America', 'Central America', 'North America'].includes(f.region));
-  const covered = latam.filter(f => p.country[f.iso]).length;
-  const available = latam.filter(f => f.count > 0);
-  const gaps = available.filter(f => !p.country[f.iso]).length;
-  const nextBadge = state.badges.filter(b => b.next && b.id !== 'us-economic-equality').sort((a, b) => a.remaining - b.remaining)[0];
+  if (!p || !settings.lender) { $('stats').innerHTML = ''; return; }
+  const isos = new Set(regionCountries());
+  const inRegions = state.facets.filter(f => isos.has(f.iso));
+  const covered = inRegions.filter(f => p.country[f.iso]).length;
+  const gaps = inRegions.filter(f => f.count > 0 && !p.country[f.iso]).length;
+  const nextBadge = state.badges.filter(b => b.next && !(settings.excludeUSCA && b.id === 'us-economic-equality'))
+    .sort((a, b) => a.remaining - b.remaining)[0];
   $('stats').innerHTML = `
     <div class="stat"><b>${p.total}</b><small>loans by ${esc(p.name)}</small></div>
     <div class="stat"><b>${Object.keys(p.country).length}</b><small>countries overall</small></div>
-    <div class="stat"><b>${covered} / ${latam.length}</b><small>Latin America &amp; Caribbean countries covered</small></div>
+    <div class="stat"><b>${covered} / ${inRegions.length}</b><small>countries covered in your selected regions</small></div>
     <div class="stat"><b>${gaps}</b><small>new-to-you countries with loans available now</small></div>
     ${nextBadge ? `<div class="stat"><b>${nextBadge.remaining}</b><small>loan${nextBadge.remaining > 1 ? 's' : ''} to the next ${esc(nextBadge.name)} tier</small></div>` : ''}`;
 }
@@ -564,7 +666,7 @@ function renderBadgeTab(list) {
     const pct = done ? 100 : Math.round(100 * b.progress / b.next.target);
     const n = list.filter(l => b.loanIds.has(l.id)).length;
     const note = done ? 'Every tier complete'
-      : b.id === 'us-economic-equality' ? 'U.S. loans only, which your settings exclude'
+      : b.id === 'us-economic-equality' && settings.excludeUSCA ? 'U.S. loans only, which your settings exclude'
       : `${b.remaining} more to reach ${b.next.target} · ${n} matching loan${n === 1 ? '' : 's'}`;
     return `<button class="panel badgecard${state.badgeFocus === b.id ? ' on' : ''}" data-badge="${b.id}" ${done ? 'disabled' : ''}>
       <strong>${esc(b.name)}</strong> <span class="meta">${b.progress} loans</span>
@@ -579,7 +681,7 @@ function renderBadgeTab(list) {
 
 function renderCoverage() {
   const p = state.portfolio;
-  const isos = new Set(groupCountries(settings.groups));
+  const isos = new Set(regionCountries());
   const matching = {};
   const base = state.countryFilter;
   state.countryFilter = null;
@@ -604,28 +706,46 @@ function renderCoverage() {
 }
 
 function render() {
-  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === settings.tab));
-  $('tabHelp').textContent = TAB_HELP[settings.tab];
+  // Without a lender ID only Top picks (ranked by urgency) makes sense; the history-based parts are hidden
+  const anon = !settings.lender;
+  const tab = anon ? 'top' : settings.tab;
+  document.querySelectorAll('#tabs button').forEach(b => {
+    b.classList.toggle('on', b.dataset.tab === tab);
+    b.hidden = anon && b.dataset.tab !== 'top';
+  });
+  $('weights').hidden = anon;
+  $('hideOwned').closest('label').hidden = anon;
+  $('tabHelp').textContent = anon ? TAB_HELP.anon : TAB_HELP[tab];
   renderChips();
   if (!state.portfolio) return;
   const view = $('view');
-  if (settings.tab === 'coverage') { view.innerHTML = renderCoverage(); return; }
+  if (tab === 'coverage') { view.innerHTML = renderCoverage(); return; }
   const list = filteredPool();
   list.forEach(l => { l.s = scoreLoan(l); });
-  if (settings.tab === 'top') view.innerHTML = renderLoans(list, 'top');
-  else if (settings.tab === 'fam') view.innerHTML = renderLoans(list.filter(l => l.s.fam > 0), 'fam');
-  else if (settings.tab === 'new') view.innerHTML = renderLoans(list.filter(l => l.s.nov > 0), 'nov');
+  if (tab === 'top') view.innerHTML = renderLoans(list, 'top');
+  else if (tab === 'fam') view.innerHTML = renderLoans(list.filter(l => l.s.fam > 0), 'fam');
+  else if (tab === 'new') view.innerHTML = renderLoans(list.filter(l => l.s.nov > 0), 'nov');
   else view.innerHTML = renderBadgeTab(list);
 }
 
 // ---------- wiring ----------
 function syncControls() {
   $('lenderId').value = settings.lender;
-  $('regionChecks').innerHTML = GROUPS.map(g =>
-    `<label><input type="checkbox" value="${g.id}" ${settings.groups.includes(g.id) ? 'checked' : ''}> ${g.label}</label>`).join('');
+  $('excludeUSCA').checked = settings.excludeUSCA;
   $('womenOnly').checked = settings.womenOnly;
   $('hideOwned').checked = settings.hideOwned;
   ['maxTerm', 'maxDefault', 'minFunded', 'maxLeft', 'maxDays', 'sortBy', 'wFam', 'wNew', 'wBadge', 'wUrg'].forEach(k => { $(k).value = settings[k]; });
+}
+
+// Region checkboxes come from Kiva's own region list, with fundraising loan counts
+function renderRegions() {
+  if (!state.facets.length) return;
+  const regions = settings.regions || allRegions();
+  $('regionChecks').innerHTML = allRegions().map(r => {
+    const n = state.facets.filter(f => f.region === r && !(settings.excludeUSCA && EXCLUDED.has(f.iso)))
+      .reduce((t, f) => t + f.count, 0);
+    return `<label><input type="checkbox" value="${esc(r)}" ${regions.includes(r) ? 'checked' : ''}> ${esc(r)} <span class="meta">${n.toLocaleString()}</span></label>`;
+  }).join('');
 }
 
 async function refreshPool(force) {
@@ -634,7 +754,7 @@ async function refreshPool(force) {
   try {
     await loadPool(force, seq);
     if (seq !== state.loadSeq) return;
-    setStatus(`${state.pool.length} fundraising loans · updated ${new Date(state.poolAt).toLocaleTimeString()}`, false, 'Refresh');
+    setStatus(`${state.pool.length.toLocaleString()} fundraising loans · updated ${shortTime(state.poolAt)}`, false, 'Refresh');
   } catch (e) {
     if (seq !== state.loadSeq) return;
     setStatus('Could not load loans: ' + e.message, true, 'Retry');
@@ -643,15 +763,13 @@ async function refreshPool(force) {
 }
 
 async function loadProfile(force) {
-  const stored = !force && cacheGet('kivaFinderProfile', PROFILE_TTL);
-  if (stored && stored.lender === settings.lender) {
-    stored.portfolio.ids = new Set(stored.portfolio.ids);
-    stored.badges.forEach(b => { b.loanIds = new Set(); });
-    return stored;
-  }
-  const [portfolio, badges, facets] = await Promise.all([loadPortfolio(settings.lender), loadBadges(settings.lender), loadFacets()]);
-  cacheSet('kivaFinderProfile', { lender: settings.lender, portfolio: { ...portfolio, ids: [...portfolio.ids] },
-    badges: badges.map(({ loanIds, ...b }) => b), facets });
+  const stored = !force && await idbGet('profile');
+  if (stored && stored.lender === settings.lender && Date.now() - stored.at < PROFILE_TTL) return stored;
+  const empty = { name: '', total: 0, ids: new Set(), country: {}, countryNames: {}, sector: {}, activity: {} };
+  const [portfolio, badges, facets] = settings.lender
+    ? await Promise.all([loadPortfolio(settings.lender), loadBadges(settings.lender), loadFacets()])
+    : [empty, [], await loadFacets()];
+  idbSet('profile', { lender: settings.lender, portfolio, badges, facets, at: Date.now() });
   return { portfolio, badges, facets };
 }
 
@@ -659,14 +777,15 @@ async function loadAll(force) {
   settings.lender = $('lenderId').value.trim().replace(/^.*\/lender\//, '').replace(/[/?#].*$/, '');
   $('lenderId').value = settings.lender;
   saveSettings();
-  if (!settings.lender) { promptForLender(); return; }
   state.loadSeq++;
   state.portfolio = null; state.poolKey = ''; state.pool = []; poolCache.clear(); state.countryFilter = null; state.badgeFocus = null;
-  $('view').innerHTML = ''; renderStats();
-  setStatus(`Loading ${settings.lender}'s portfolio and badges…`);
+  $('view').innerHTML = ''; renderStats(); render();
+  setStatus(settings.lender ? `Loading ${settings.lender}'s portfolio and badges…` : 'Loading regions…');
   try {
     const { portfolio, badges, facets } = await loadProfile(force);
     Object.assign(state, { portfolio, badges, facets });
+    renderRegions();
+    renderSearches();
     renderStats();
     await refreshPool(force);
   } catch (e) { setStatus(e.message, true, 'Retry'); }
@@ -679,13 +798,37 @@ $('status').addEventListener('click', e => {
   else refreshPool();
 });
 $('regionChecks').addEventListener('change', () => {
-  settings.groups = [...document.querySelectorAll('#regionChecks input:checked')].map(i => i.value);
-  saveSettings(); refreshPool();
+  settings.regions = [...document.querySelectorAll('#regionChecks input:checked')].map(i => i.value);
+  searchChanged(); renderSearches(); renderStats(); refreshPool();
 });
-$('womenOnly').addEventListener('change', e => { settings.womenOnly = e.target.checked; saveSettings(); refreshPool(); });
-$('hideOwned').addEventListener('change', e => { settings.hideOwned = e.target.checked; saveSettings(); render(); });
-['maxTerm', 'maxDefault', 'minFunded', 'maxLeft', 'maxDays', 'sortBy'].forEach(k => $(k).addEventListener('change', e => { settings[k] = e.target.value; saveSettings(); state.shown = SHOW_STEP; render(); }));
-['wFam', 'wNew', 'wBadge', 'wUrg'].forEach(k => $(k).addEventListener('input', e => { settings[k] = +e.target.value; saveSettings(); render(); }));
+$('excludeUSCA').addEventListener('change', e => {
+  settings.excludeUSCA = e.target.checked; searchChanged(); renderSearches(); renderRegions(); renderStats(); refreshPool();
+});
+$('womenOnly').addEventListener('change', e => { settings.womenOnly = e.target.checked; searchChanged(); renderSearches(); refreshPool(); });
+$('hideOwned').addEventListener('change', e => { settings.hideOwned = e.target.checked; searchChanged(); renderSearches(); render(); });
+['maxTerm', 'maxDefault', 'minFunded', 'maxLeft', 'maxDays', 'sortBy'].forEach(k => $(k).addEventListener('change', e => { settings[k] = e.target.value; searchChanged(); renderSearches(); state.shown = SHOW_STEP; render(); }));
+['wFam', 'wNew', 'wBadge', 'wUrg'].forEach(k => $(k).addEventListener('input', e => { settings[k] = +e.target.value; searchChanged(); render(); }));
+$('savedSel').addEventListener('change', e => {
+  const v = loadSearches(), val = e.target.value;
+  if (!val) return;
+  const s = val[0] === 's' ? v.saved[+val.slice(1)].s : v.recent[+val.slice(1)];
+  if (s) applySearch(s);
+});
+$('saveBtn').addEventListener('click', () => {
+  const name = $('saveName').value.trim() || describeSearch(currentSearch());
+  const v = loadSearches();
+  v.saved = [...v.saved.filter(x => x.name !== name), { name, s: currentSearch() }];
+  storeSearches(v);
+  $('saveName').value = '';
+  renderSearches();
+});
+$('saveName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('saveBtn').click(); } });
+$('delBtn').addEventListener('click', () => {
+  const v = loadSearches();
+  v.saved.splice(+$('delBtn').dataset.idx, 1);
+  storeSearches(v);
+  renderSearches();
+});
 let searchTimer;
 $('search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.shown = SHOW_STEP; render(); }, 200); });
 $('tabs').addEventListener('click', e => {
@@ -711,15 +854,9 @@ $('themeBtn').addEventListener('click', () => {
 });
 try { const t = localStorage.getItem('kivaFinderTheme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
-function promptForLender() {
-  state.portfolio = null; renderStats(); $('view').innerHTML = '';
-  setStatus("Enter a Kiva lender ID and press Load. It's the last part of your lender page URL, kiva.org/lender/<id>, and that page must be public.");
-  $('lenderId').focus();
-}
-
 syncControls();
 render();
-if (settings.lender) loadAll(); else promptForLender();
+loadAll();
 </script>
 </body>
 </html>
