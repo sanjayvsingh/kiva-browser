@@ -212,7 +212,7 @@ const state = {
   badges: [],         // [{ id, name, description, progress, next, remaining, tiers, filters, loanIds:Set }]
   facets: [],         // [{ iso, name, region, count }]
   pool: [],           // fundraising loans for current groups/women setting
-  poolKey: '', countryFilter: null, badgeFocus: null, shown: SHOW_STEP, loading: false,
+  poolKey: '', countryFilter: null, badgeFocus: null, shown: SHOW_STEP, loadSeq: 0,
 };
 const poolCache = new Map();
 
@@ -310,27 +310,45 @@ const POOL_Q = `query($f:[FundraisingLoanSearchFilterInput!],$page:Int){ fundrai
   ... on LoanPartner { partner { defaultRate } } } } }`;
 const IDS_Q = `query($f:[FundraisingLoanSearchFilterInput!],$page:Int){ fundraisingLoans(filters:$f, limit:${PAGE}, pageNumber:$page){ totalCount values { id } } }`;
 
+// onProgress(newValues, loadedSoFar, total) runs after each batch; returning false stops fetching
 async function fetchAllPages(query, filters, onProgress) {
   const first = await gql(query, { f: filters, page: 0 });
   const total = first.fundraisingLoans.totalCount;
-  let values = first.fundraisingLoans.values;
+  let values = first.fundraisingLoans.values.filter(Boolean);
+  if (onProgress && onProgress(values, values.length, total) === false) return values;
   const rest = [];
   for (let page = 1; page * PAGE < total; page++) rest.push(() => gql(query, { f: filters, page }));
-  let done = values.length;
-  const results = [];
   for (let i = 0; i < rest.length; i += CONCURRENCY) {
-    const chunk = await Promise.all(rest.slice(i, i + CONCURRENCY).map(t => t()));
-    chunk.forEach(d => { results.push(...d.fundraisingLoans.values); done += d.fundraisingLoans.values.length; });
-    if (onProgress) onProgress(done, total);
+    const chunk = (await Promise.all(rest.slice(i, i + CONCURRENCY).map(t => t())))
+      .flatMap(d => d.fundraisingLoans.values).filter(Boolean);
+    values = values.concat(chunk);
+    if (onProgress && onProgress(chunk, values.length, total) === false) break;
   }
-  return values.concat(results).filter(Boolean);
+  return values;
 }
 
 function groupCountries(groups) {
   return state.facets.filter(f => groups.some(g => GROUPS.find(x => x.id === g).test(f))).map(f => f.iso);
 }
 
-async function loadPool(force) {
+// AND our base filter into each of the badge's OR'd filter entries, intersecting country lists
+async function loadBadgeIds(isos, base) {
+  const badgeIds = {};
+  await Promise.all(state.badges.filter(b => b.next && b.filters.length).map(async b => {
+    const entries = b.filters.map(f => {
+      const own = f.countryIsoCode && f.countryIsoCode.any;
+      const any = own ? own.filter(c => isos.includes(c)) : isos;
+      return any.length ? { ...f, ...base, countryIsoCode: { any } } : null;
+    }).filter(Boolean);
+    const ids = entries.length ? await fetchAllPages(IDS_Q, entries) : [];
+    badgeIds[b.id] = new Set(ids.map(x => x.id));
+  }));
+  return badgeIds;
+}
+
+// seq identifies this load; if settings change mid-load a newer load takes over and this one stops
+async function loadPool(force, seq) {
+  const current = () => seq === state.loadSeq;
   const isos = groupCountries(settings.groups);
   const key = settings.lender + '|' + isos.slice().sort().join(',') + '|' + settings.womenOnly;
   if (key === state.poolKey && !force) return;
@@ -346,21 +364,23 @@ async function loadPool(force) {
     else {
       const base = { countryIsoCode: { any: isos } };
       if (settings.womenOnly) base.gender = { eq: 'female' };
-      setStatus('Loading fundraising loans…');
-      const loans = await fetchAllPages(POOL_Q, [base], (n, t) => setStatus(`Loading fundraising loans… ${n} of ${t}`));
+      // Badge matches first (a few small requests), so cards shown during loading already carry badge reasons
       setStatus('Checking which loans count toward your badges…');
-      const badgeIds = {};
-      await Promise.all(state.badges.filter(b => b.next && b.filters.length).map(async b => {
-        // AND our base filter into each of the badge's OR'd filter entries, intersecting country lists
-        const entries = b.filters.map(f => {
-          const own = f.countryIsoCode && f.countryIsoCode.any;
-          const any = own ? own.filter(c => isos.includes(c)) : isos;
-          return any.length ? { ...f, ...base, countryIsoCode: { any } } : null;
-        }).filter(Boolean);
-        const ids = entries.length ? await fetchAllPages(IDS_Q, entries) : [];
-        badgeIds[b.id] = new Set(ids.map(x => x.id));
-      }));
-      poolCache.set(key, { loans: loans.map(enrich), badgeIds, at: Date.now() });
+      const badgeIds = await loadBadgeIds(isos, base);
+      if (!current()) return;
+      state.badges.forEach(b => { b.loanIds = badgeIds[b.id] || new Set(); });
+      state.pool = [];
+      setStatus('Loading fundraising loans…');
+      const loans = await fetchAllPages(POOL_Q, [base], (chunk, n, total) => {
+        if (!current()) return false;
+        state.pool = state.pool.concat(chunk.map(enrich));
+        if (n < total) {
+          setStatus(`Loading fundraising loans… ${n} of ${total}. Showing what's loaded so far; rankings may shift until it finishes.`);
+          render();
+        }
+      });
+      if (!current()) return;
+      poolCache.set(key, { loans: state.pool, badgeIds, at: Date.now() });
       const idLists = {};
       Object.entries(badgeIds).forEach(([id, set]) => { idLists[id] = [...set]; });
       cacheSet('kivaFinderPool', { key, loans, badgeIds: idLists });
@@ -581,14 +601,16 @@ function syncControls() {
 }
 
 async function refreshPool(force) {
-  if (state.loading) return;
-  state.loading = true;
-  try {
-    await loadPool(force);
-    setStatus(`${state.pool.length} fundraising loans · updated ${new Date(state.poolAt).toLocaleTimeString()}`, false, 'Refresh');
-  } catch (e) { setStatus('Could not load loans: ' + e.message, true, 'Retry'); }
-  state.loading = false;
+  const seq = ++state.loadSeq;
   state.shown = SHOW_STEP;
+  try {
+    await loadPool(force, seq);
+    if (seq !== state.loadSeq) return;
+    setStatus(`${state.pool.length} fundraising loans · updated ${new Date(state.poolAt).toLocaleTimeString()}`, false, 'Refresh');
+  } catch (e) {
+    if (seq !== state.loadSeq) return;
+    setStatus('Could not load loans: ' + e.message, true, 'Retry');
+  }
   render();
 }
 
@@ -610,7 +632,8 @@ async function loadAll(force) {
   $('lenderId').value = settings.lender;
   saveSettings();
   if (!settings.lender) { promptForLender(); return; }
-  state.portfolio = null; state.poolKey = ''; poolCache.clear(); state.countryFilter = null; state.badgeFocus = null;
+  state.loadSeq++;
+  state.portfolio = null; state.poolKey = ''; state.pool = []; poolCache.clear(); state.countryFilter = null; state.badgeFocus = null;
   $('view').innerHTML = ''; renderStats();
   setStatus(`Loading ${settings.lender}'s portfolio and badges…`);
   try {
