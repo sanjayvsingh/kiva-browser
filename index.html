@@ -73,6 +73,16 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .chip.badge { background: var(--badge-soft); color: var(--badge); }
 .chip.urgent { background: var(--accent-soft); color: var(--accent-text); }
 .chip button { border: 0; background: none; padding: 0 0 0 4px; color: inherit; }
+/* Hide-this ✕ on card details: shown on hover, always shown on touch screens */
+.ex { position: relative; }
+.ex .x { visibility: hidden; position: absolute; top: -7px; right: -9px; width: 16px; height: 16px; padding: 0;
+  border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--warn);
+  font-size: 9px; line-height: 14px; text-align: center; cursor: pointer; box-shadow: var(--shadow); }
+.ex:hover .x, .ex .x:focus-visible { visibility: visible; }
+@media (hover: none) { .ex .x { visibility: visible; opacity: .6; } }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg);
+  border-radius: 10px; padding: 10px 14px; font-size: 14px; box-shadow: 0 4px 16px rgba(0,0,0,.2); z-index: 10; max-width: calc(100% - 32px); }
+.toast button { border: 0; background: none; color: inherit; text-decoration: underline; font-weight: 600; padding: 0 0 0 8px; }
 nav.tabs { display: flex; gap: 4px; margin: 16px 0 12px; border-bottom: 1px solid var(--border); overflow-x: auto; }
 nav.tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none;
   padding: 8px 14px; color: var(--muted); white-space: nowrap; }
@@ -191,8 +201,10 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
         <label title="Nearly funded, little left to raise, or expiring soon">Urgency <input type="range" min="0" max="100" id="wUrg"></label>
       </div>
     </details>
+    <div class="chiprow" id="excludedRow" hidden><span class="meta">Hidden:</span><span class="chiprow" id="excludedChips" style="margin:0"></span></div>
     <div class="chiprow" id="activeChips"></div>
   </section>
+  <div class="toast" id="toast" role="status" hidden></div>
 
   <nav class="tabs" id="tabs">
     <button data-tab="top" class="on">Top picks</button>
@@ -214,7 +226,7 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
 const API = 'https://gateway.production.kiva.org/graphql';
 const EXCLUDED = new Set(['US', 'CA', 'PR', 'GU', 'VI']);
 // The settings that make up a saved or recent search
-const SEARCH_KEYS = ['regions', 'excludeUSCA', 'womenOnly', 'hideOwned', 'maxTerm', 'maxDefault', 'minFunded',
+const SEARCH_KEYS = ['regions', 'excluded', 'excludeUSCA', 'womenOnly', 'hideOwned', 'maxTerm', 'maxDefault', 'minFunded',
   'maxLeft', 'maxDays', 'sortBy', 'wFam', 'wNew', 'wBadge', 'wUrg'];
 const RECENT_MAX = 5;
 const BADGE_NAMES = {
@@ -229,8 +241,9 @@ const TAB_HELP = {
   coverage: 'Countries in your selected regions, how many loans you have made there, and how many matching loans are fundraising now.',
   anon: 'Ranked by urgency: loans that are nearly funded, have little left to raise, or expire soon. Enter a Kiva lender ID above to rank by your own lending history and unlock the Familiar, New to us, Achievements and Country coverage tabs.',
 };
-// regions: null means every region (filled in once Kiva's region list has loaded)
-const DEFAULTS = { lender: '', regions: null, excludeUSCA: true, womenOnly: true, hideOwned: true,
+// excluded: countries (ISO codes), sectors and activities the visitor has chosen to hide
+const noExclusions = () => ({ country: [], sector: [], activity: [] });
+const DEFAULTS = { lender: '', regions: ['Central America', 'South America'], excludeUSCA: true, womenOnly: true, hideOwned: true,
   maxTerm: '0', maxDefault: '100', minFunded: '0', maxLeft: '0', maxDays: '0', sortBy: 'score',
   wFam: 30, wNew: 45, wBadge: 25, wUrg: 15, tab: 'top' };
 const PAGE = 100, CONCURRENCY = 3, SHOW_STEP = 48;
@@ -257,7 +270,7 @@ function loadSettings() {
   }
   delete s.groups;
   const p = new URLSearchParams(location.search).get('lender');
-  return { ...DEFAULTS, ...s, ...(p ? { lender: p } : {}) };
+  return { ...DEFAULTS, excluded: noExclusions(), ...s, ...(p ? { lender: p } : {}) };
 }
 function saveSettings() { try { localStorage.setItem('kivaFinder', JSON.stringify(settings)); } catch (e) {} }
 
@@ -281,6 +294,8 @@ function describeSearch(s) {
   if (+s.maxDays) parts.push(`≤${s.maxDays} days`);
   if (+s.maxDefault < 100) parts.push(`default ≤${s.maxDefault}%`);
   if (!s.excludeUSCA) parts.push('incl. U.S./Canada');
+  const hidden = s.excluded ? s.excluded.country.length + s.excluded.sector.length + s.excluded.activity.length : 0;
+  if (hidden) parts.push(`${hidden} hidden`);
   return parts.join(' · ');
 }
 
@@ -309,10 +324,11 @@ function renderSearches() {
 }
 
 function applySearch(s) {
-  Object.assign(settings, s);
+  Object.assign(settings, { excluded: noExclusions() }, JSON.parse(JSON.stringify(s)));
   saveSettings();
   syncControls();
   renderRegions();
+  renderExcluded();
   renderSearches();
   refreshPool();
 }
@@ -529,17 +545,19 @@ function scoreLoan(l) {
   const cN = p.country[l.iso] || 0, sN = p.sector[l.sectorName] || 0, aN = p.activity[l.activityName] || 0;
 
   const fam = 0.35 * cN / maxOf(p.country) + 0.35 * sN / maxOf(p.sector) + 0.3 * aN / maxOf(p.activity);
+  // Reasons are [kind, text] plus, when they name a country/sector/activity, [dimension, value] so they can be hidden
+  const C = ['country', l.iso], S = ['sector', l.sectorName], A = ['activity', l.activityName];
   const rank = (o, k) => Object.entries(o).sort((a, b) => b[1] - a[1]).findIndex(e => e[0] == k) + 1;
-  if (cN && rank(p.country, l.iso) <= 3) reasons.push(['fam', `Your #${rank(p.country, l.iso)} country`]);
-  if (sN && rank(p.sector, l.sectorName) <= 3) reasons.push(['fam', `Favorite sector: ${l.sectorName}`]);
-  if (aN >= 3) reasons.push(['fam', `${aN} past ${l.activityName} loans`]);
+  if (cN && rank(p.country, l.iso) <= 3) reasons.push(['fam', `Your #${rank(p.country, l.iso)} country`, ...C]);
+  if (sN && rank(p.sector, l.sectorName) <= 3) reasons.push(['fam', `Favorite sector: ${l.sectorName}`, ...S]);
+  if (aN >= 3) reasons.push(['fam', `You've made ${aN} ${l.activityName} loans`, ...A]);
 
   let nov = 0;
-  if (cN === 0) { nov += 1; reasons.unshift(['new', `New country: ${l.country}`]); }
-  else if (cN <= 2) { nov += 0.6; reasons.unshift(['new', `Only ${cN} loan${cN > 1 ? 's' : ''} in ${l.country}`]); }
+  if (cN === 0) { nov += 1; reasons.unshift(['new', `New country: ${l.country}`, ...C]); }
+  else if (cN <= 2) { nov += 0.6; reasons.unshift(['new', `You've made ${cN} loan${cN > 1 ? 's' : ''} in ${l.country}`, ...C]); }
   else if (cN <= 5) nov += 0.3;
-  if (sN === 0) { nov += 0.5; reasons.push(['new', `New sector: ${l.sectorName}`]); } else if (sN <= 2) nov += 0.25;
-  if (aN === 0) { nov += 0.5; reasons.push(['new', `New activity: ${l.activityName}`]); }
+  if (sN === 0) { nov += 0.5; reasons.push(['new', `New sector: ${l.sectorName}`, ...S]); } else if (sN <= 2) nov += 0.25;
+  if (aN === 0) { nov += 0.5; reasons.push(['new', `New activity: ${l.activityName}`, ...A]); }
   nov /= 2;
 
   let badge = 0; const badgeHits = [];
@@ -568,8 +586,10 @@ function filteredPool() {
   const q = (document.getElementById('search').value || '').trim().toLowerCase();
   const maxTerm = +settings.maxTerm, maxDef = +settings.maxDefault,
         minFunded = +settings.minFunded / 100, maxLeft = +settings.maxLeft, maxDays = +settings.maxDays;
+  const ex = settings.excluded;
   return state.pool.filter(l =>
     l.left > 0 &&
+    !ex.country.includes(l.iso) && !ex.sector.includes(l.sectorName) && !ex.activity.includes(l.activityName) &&
     l.funded >= minFunded &&
     !(maxLeft && l.left > maxLeft) &&
     !(maxDays && l.daysLeft > maxDays) &&
@@ -634,16 +654,51 @@ function renderChips() {
   $('activeChips').innerHTML = chips.join('');
 }
 
+// ---------- hiding countries, sectors and activities ----------
+const DIM_LABEL = { country: 'country', sector: 'sector', activity: 'activity' };
+function excludedName(dim, val) {
+  if (dim !== 'country') return val;
+  const f = state.facets.find(x => x.iso === val);
+  return f ? f.name : val;
+}
+function hideBtn(dim, val) {
+  const name = excludedName(dim, val);
+  return `<button class="x" data-exclude="${dim}" data-val="${esc(val)}" title="Hide all loans in this ${DIM_LABEL[dim]}: ${esc(name)}" aria-label="Hide ${esc(name)}">✕</button>`;
+}
+function setExcluded(dim, val, hide) {
+  const ex = settings.excluded;
+  const list = ex[dim].filter(v => v !== val);
+  settings.excluded = { ...ex, [dim]: hide ? [...list, val].sort() : list };
+  searchChanged(); renderSearches(); renderExcluded(); state.shown = Math.max(state.shown, SHOW_STEP); render();
+}
+function renderExcluded() {
+  const ex = settings.excluded;
+  const chips = ['country', 'sector', 'activity'].flatMap(dim => ex[dim].map(val =>
+    `<span class="chip">${esc(excludedName(dim, val))}<button data-unexclude="${dim}" data-val="${esc(val)}" aria-label="Show ${esc(excludedName(dim, val))} again">✕</button></span>`));
+  $('excludedRow').hidden = !chips.length;
+  $('excludedChips').innerHTML = chips.join('');
+}
+let toastTimer;
+function showUndo(dim, val) {
+  const t = $('toast');
+  t.innerHTML = `Hid all ${esc(excludedName(dim, val))} loans <button data-undo="${dim}" data-val="${esc(val)}">Undo</button>`;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 6000);
+}
+
 function cardHtml(l) {
   const pct = l.amount ? Math.round(100 * (l.amount - l.left) / l.amount) : 0;
   const shownScore = { top: 'top', fam: 'fam', new: 'nov', badge: 'badge' }[settings.tab];
-  const chips = l.s.reasons.slice(0, 5).map(([k, t]) => `<span class="chip ${k}">${esc(t)}</span>`).join('');
+  const chips = l.s.reasons.slice(0, 5).map(([k, t, dim, val]) =>
+    `<span class="chip ${k}${dim ? ' ex' : ''}">${esc(t)}${dim ? hideBtn(dim, val) : ''}</span>`).join('');
+  const part = (dim, val, label) => `<span class="ex">${esc(label)}${hideBtn(dim, val)}</span>`;
   return `<article class="card">
     <a href="https://www.kiva.org/lend/${l.id}" target="_blank" rel="noopener"><img loading="lazy" alt="" src="${esc(l.image && l.image.url)}"></a>
     <div>
       <h3><a href="https://www.kiva.org/lend/${l.id}" target="_blank" rel="noopener">${esc(l.name)}</a>
         <span class="score" title="Score for this loan">${Math.round(100 * l.s[shownScore])}</span></h3>
-      <div class="meta">${esc(l.country)} · ${esc(l.sectorName)} / ${esc(l.activityName)}</div>
+      <div class="meta">${part('country', l.iso, l.country)} · ${part('sector', l.sectorName, l.sectorName)} / ${part('activity', l.activityName, l.activityName)}</div>
       <div class="use">${esc(l.use)}</div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <div class="meta">${money(l.left)} left of ${money(l.amount)} · ${l.lenderRepaymentTerm} mo · ${Math.ceil(l.daysLeft)}d left</div>
@@ -785,6 +840,7 @@ async function loadAll(force) {
     const { portfolio, badges, facets } = await loadProfile(force);
     Object.assign(state, { portfolio, badges, facets });
     renderRegions();
+    renderExcluded();
     renderSearches();
     renderStats();
     await refreshPool(force);
@@ -835,9 +891,18 @@ $('tabs').addEventListener('click', e => {
   const t = e.target.closest('button'); if (!t) return;
   settings.tab = t.dataset.tab; saveSettings(); state.shown = SHOW_STEP; render();
 });
+$('excludedChips').addEventListener('click', e => {
+  const b = e.target.closest('button[data-unexclude]'); if (b) setExcluded(b.dataset.unexclude, b.dataset.val, false);
+});
+$('toast').addEventListener('click', e => {
+  const b = e.target.closest('button[data-undo]'); if (!b) return;
+  setExcluded(b.dataset.undo, b.dataset.val, false);
+  $('toast').hidden = true;
+});
 $('view').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.id === 'moreBtn') { state.shown += SHOW_STEP; render(); }
+  if (b.dataset.exclude) { setExcluded(b.dataset.exclude, b.dataset.val, true); showUndo(b.dataset.exclude, b.dataset.val); }
+  else if (b.id === 'moreBtn') { state.shown += SHOW_STEP; render(); }
   else if (b.dataset.country) { state.countryFilter = b.dataset.country; settings.tab = 'top'; state.shown = SHOW_STEP; render(); window.scrollTo(0, 0); }
   else if (b.dataset.badge) { state.badgeFocus = state.badgeFocus === b.dataset.badge ? null : b.dataset.badge; state.shown = SHOW_STEP; render(); }
 });
