@@ -59,7 +59,7 @@ body.filters-closed .sidebar { display: none; }
   color: var(--accent-text); font-size: 11px; font-weight: 600; text-align: center; }
 .count:empty { display: none; }
 .pills { display: flex; flex-wrap: wrap; gap: 4px; }
-.pills button { padding: 3px 9px; font-size: 13px; border-radius: 999px; }
+.pills button { padding: 3px 7px; font-size: 13px; border-radius: 999px; }
 .pills button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 :root[data-theme="dark"] .pills button.on { color: #0d1a12; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pills button.on { color: #0d1a12; } }
@@ -231,7 +231,7 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
       </div>
       <div class="field">Max left to fund
         <div class="pills" data-key="maxLeft">
-          <button data-v="0">Any</button><button data-v="25">$25</button><button data-v="50">$50</button>
+          <button data-v="0">Any</button><button data-v="50">$50</button>
           <button data-v="100">$100</button><button data-v="250">$250</button><button data-v="500">$500</button>
         </div>
       </div>
@@ -311,6 +311,7 @@ const isExcludedCountry = iso => (EXCLUDE_GROUPS[settings.excludeGroup] || EXCLU
 // Searches saved before G7/G20 existed had an "Exclude U.S. & Canada" checkbox
 function migrateSearch(s) {
   if ('excludeUSCA' in s) { if (!s.excludeGroup) s.excludeGroup = s.excludeUSCA ? 'g7' : 'none'; delete s.excludeUSCA; }
+  if (s.maxLeft === '25') s.maxLeft = '50';   // the $25 option was removed
   return s;
 }
 // The settings that make up a saved or recent search
