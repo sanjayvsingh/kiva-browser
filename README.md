@@ -18,3 +18,7 @@ Open `index.html` from any static web host (or locally with `py -m http.server`)
 The page calls Kiva's public GraphQL API (`https://gateway.production.kiva.org/graphql`) directly from the browser. No API key, login or backend is needed, and nothing is sent anywhere else. Lending itself happens on kiva.org.
 
 Downloads are cached in the browser (loans for 15 minutes, portfolio and badges for an hour) because Kiva's firewall briefly blocks clients that send many requests in a short time. Use **Refresh** or **Load** for fresh data, e.g. right after making a loan.
+
+## Related
+
+- [KivaLens](https://www.kivalens.org) ([source](https://github.com/nuclearspike/kivalens)): a much fuller Kiva loan search, with detailed filters, field partner research and portfolio balancing. This project is independent of it and uses none of its code.
