@@ -142,10 +142,28 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
           <option value="3">3%</option><option value="5">5%</option>
         </select>
       </label>
+      <label>Min funded
+        <select id="minFunded">
+          <option value="0">Any</option><option value="25">25%</option><option value="50">50%</option>
+          <option value="75">75%</option><option value="90">90%</option>
+        </select>
+      </label>
+      <label>Max left to fund
+        <select id="maxLeft">
+          <option value="0">Any</option><option value="25">$25</option><option value="50">$50</option>
+          <option value="100">$100</option><option value="250">$250</option><option value="500">$500</option>
+        </select>
+      </label>
+      <label>Max days left
+        <select id="maxDays">
+          <option value="0">Any</option><option>3</option><option>7</option><option>14</option><option>30</option>
+        </select>
+      </label>
       <label>Sort
         <select id="sortBy">
           <option value="score">Best match</option>
           <option value="left">Least left to fund</option>
+          <option value="funded">Most funded</option>
           <option value="expiring">Expiring soonest</option>
           <option value="term">Shortest term</option>
         </select>
@@ -160,6 +178,7 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
         <label>Familiar <input type="range" min="0" max="100" id="wFam"></label>
         <label>New to us <input type="range" min="0" max="100" id="wNew"></label>
         <label>Achievements <input type="range" min="0" max="100" id="wBadge"></label>
+        <label title="Nearly funded, little left to raise, or expiring soon">Urgency <input type="range" min="0" max="100" id="wUrg"></label>
       </div>
     </details>
     <div class="chiprow" id="activeChips"></div>
@@ -195,14 +214,15 @@ const BADGE_NAMES = {
   'basic-needs': 'Basic Needs', 'us-economic-equality': 'U.S. Economic Equality',
 };
 const TAB_HELP = {
-  top: 'A blend of all three goals, using the weighting above. Each card says why it ranks where it does.',
+  top: 'A blend of familiar, new, achievements and urgency, using the weighting above. Each card says why it ranks where it does.',
   fam: 'Loans that look like the ones you already make: your most common countries, sectors and activities.',
   new: "Loans that broaden your portfolio: countries you've never lent in rank first, then new sectors and activities.",
   badge: 'Kiva badge progress. Pick a badge to see qualifying loans that also pass your filters. Badges closest to their next tier score highest.',
   coverage: 'Countries in your selected regions, how many loans you have made there, and how many matching loans are fundraising now.',
 };
 const DEFAULTS = { lender: '', groups: ['sa', 'ca', 'mxc'], womenOnly: true, hideOwned: true,
-  maxTerm: '0', maxDefault: '100', sortBy: 'score', wFam: 30, wNew: 45, wBadge: 25, tab: 'top' };
+  maxTerm: '0', maxDefault: '100', minFunded: '0', maxLeft: '0', maxDays: '0', sortBy: 'score',
+  wFam: 30, wNew: 45, wBadge: 25, wUrg: 15, tab: 'top' };
 const PAGE = 100, CONCURRENCY = 3, SHOW_STEP = 48;
 
 // ---------- state ----------
@@ -398,7 +418,7 @@ function enrich(l) {
   const fi = l.loanFundraisingInfo || {};
   const left = Math.max(0, amount - (parseFloat(fi.fundedAmount) || 0) - (parseFloat(fi.reservedAmount) || 0));
   const c = (l.geocode && l.geocode.country) || {};
-  return { ...l, amount, left, iso: c.isoCode, country: c.name, sectorName: l.sector && l.sector.name,
+  return { ...l, amount, left, funded: amount ? (amount - left) / amount : 0, iso: c.isoCode, country: c.name, sectorName: l.sector && l.sector.name,
     activityName: l.activity && l.activity.name, defaultRate: l.partner ? l.partner.defaultRate : null,
     daysLeft: l.plannedExpirationDate ? Math.max(0, (new Date(l.plannedExpirationDate) - Date.now()) / 864e5) : 99,
     text: [l.name, l.use, l.activity && l.activity.name, l.sector && l.sector.name, c.name].join(' ').toLowerCase() };
@@ -434,20 +454,27 @@ function scoreLoan(l) {
     reasons.push(['badge', `${b.name}: ${b.remaining} to next tier`]);
   }
 
+  // Urgency: how close the loan is to fully funded, how little is left to raise, and how soon it expires
+  const urg = 0.4 * l.funded + 0.3 * (1 - Math.min(l.left, 500) / 500) + 0.3 * (1 - Math.min(l.daysLeft, 30) / 30);
+  if (l.funded >= 0.75) reasons.push(['urgent', `${Math.floor(100 * l.funded)}% funded`]);
   if (l.left > 0 && l.left <= 100) reasons.push(['urgent', `Only $${Math.round(l.left)} left`]);
   if (l.daysLeft < 5) reasons.push(['urgent', `Expires in ${Math.ceil(l.daysLeft)} day${Math.ceil(l.daysLeft) === 1 ? '' : 's'}`]);
   if (l.isMatchable) reasons.push(['urgent', 'Matched']);
 
-  const w = settings.wFam + settings.wNew + settings.wBadge || 1;
-  const top = (settings.wFam * fam + settings.wNew * nov + settings.wBadge * badge) / w;
-  return { fam, nov, badge, top, reasons, badgeHits };
+  const w = settings.wFam + settings.wNew + settings.wBadge + settings.wUrg || 1;
+  const top = (settings.wFam * fam + settings.wNew * nov + settings.wBadge * badge + settings.wUrg * urg) / w;
+  return { fam, nov, badge, urg, top, reasons, badgeHits };
 }
 
 function filteredPool() {
   const q = (document.getElementById('search').value || '').trim().toLowerCase();
-  const maxTerm = +settings.maxTerm, maxDef = +settings.maxDefault;
+  const maxTerm = +settings.maxTerm, maxDef = +settings.maxDefault,
+        minFunded = +settings.minFunded / 100, maxLeft = +settings.maxLeft, maxDays = +settings.maxDays;
   return state.pool.filter(l =>
     l.left > 0 &&
+    l.funded >= minFunded &&
+    !(maxLeft && l.left > maxLeft) &&
+    !(maxDays && l.daysLeft > maxDays) &&
     !(settings.hideOwned && state.portfolio.ids.has(l.id)) &&
     !(maxTerm && l.lenderRepaymentTerm > maxTerm) &&
     !(maxDef < 100 && l.defaultRate != null && l.defaultRate > maxDef) &&
@@ -459,6 +486,7 @@ function sortLoans(list, key) {
   const by = {
     score: (a, b) => b.s[key] - a.s[key] || a.left - b.left,
     left: (a, b) => a.left - b.left,
+    funded: (a, b) => b.funded - a.funded || a.left - b.left,
     expiring: (a, b) => a.daysLeft - b.daysLeft,
     term: (a, b) => a.lenderRepaymentTerm - b.lenderRepaymentTerm || b.s[key] - a.s[key],
   }[settings.sortBy];
@@ -512,7 +540,7 @@ function cardHtml(l) {
     <a href="https://www.kiva.org/lend/${l.id}" target="_blank" rel="noopener"><img loading="lazy" alt="" src="${esc(l.image && l.image.url)}"></a>
     <div>
       <h3><a href="https://www.kiva.org/lend/${l.id}" target="_blank" rel="noopener">${esc(l.name)}</a>
-        <span class="score" title="Score for this tab">${Math.round(100 * l.s[shownScore])}</span></h3>
+        <span class="score" title="Score for this loan">${Math.round(100 * l.s[shownScore])}</span></h3>
       <div class="meta">${esc(l.country)} · ${esc(l.sectorName)} / ${esc(l.activityName)}</div>
       <div class="use">${esc(l.use)}</div>
       <div class="bar"><i style="width:${pct}%"></i></div>
@@ -597,7 +625,7 @@ function syncControls() {
     `<label><input type="checkbox" value="${g.id}" ${settings.groups.includes(g.id) ? 'checked' : ''}> ${g.label}</label>`).join('');
   $('womenOnly').checked = settings.womenOnly;
   $('hideOwned').checked = settings.hideOwned;
-  ['maxTerm', 'maxDefault', 'sortBy', 'wFam', 'wNew', 'wBadge'].forEach(k => { $(k).value = settings[k]; });
+  ['maxTerm', 'maxDefault', 'minFunded', 'maxLeft', 'maxDays', 'sortBy', 'wFam', 'wNew', 'wBadge', 'wUrg'].forEach(k => { $(k).value = settings[k]; });
 }
 
 async function refreshPool(force) {
@@ -656,8 +684,8 @@ $('regionChecks').addEventListener('change', () => {
 });
 $('womenOnly').addEventListener('change', e => { settings.womenOnly = e.target.checked; saveSettings(); refreshPool(); });
 $('hideOwned').addEventListener('change', e => { settings.hideOwned = e.target.checked; saveSettings(); render(); });
-['maxTerm', 'maxDefault', 'sortBy'].forEach(k => $(k).addEventListener('change', e => { settings[k] = e.target.value; saveSettings(); state.shown = SHOW_STEP; render(); }));
-['wFam', 'wNew', 'wBadge'].forEach(k => $(k).addEventListener('input', e => { settings[k] = +e.target.value; saveSettings(); render(); }));
+['maxTerm', 'maxDefault', 'minFunded', 'maxLeft', 'maxDays', 'sortBy'].forEach(k => $(k).addEventListener('change', e => { settings[k] = e.target.value; saveSettings(); state.shown = SHOW_STEP; render(); }));
+['wFam', 'wNew', 'wBadge', 'wUrg'].forEach(k => $(k).addEventListener('input', e => { settings[k] = +e.target.value; saveSettings(); render(); }));
 let searchTimer;
 $('search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.shown = SHOW_STEP; render(); }, 200); });
 $('tabs').addEventListener('click', e => {
