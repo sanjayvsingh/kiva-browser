@@ -7,7 +7,7 @@ A single-page, read-only tool for finding Kiva loans to make, based on a lender'
 - **Achievements**: loans that count toward Kiva badges you're close to the next tier of
 - **Country coverage**: your loans per country next to what's fundraising now
 
-Filters cover Kiva's regions (with an option to exclude the U.S. and Canada), women borrowers only, repayment term, default rate, % funded, amount left to fund, days left, and hiding loans you're already in. Searches can be saved by name, and the last few are remembered automatically.
+Filters cover Kiva's regions (with an option to exclude G7 or G20 countries), women borrowers only, repayment term, default rate, % funded, amount left to fund, days left, and hiding loans you're already in. Searches can be saved by name, and the last few are remembered automatically.
 
 ## Use
 

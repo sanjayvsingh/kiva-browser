@@ -62,6 +62,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .filters .checks { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text); font-size: 14px; }
 .filters .checks label { flex-direction: row; align-items: center; color: var(--text); font-size: 14px; gap: 6px; }
+.filters .checks label.inline select { padding: 2px 6px; }
 .weights { display: flex; gap: 14px; flex-wrap: wrap; }
 .weights label { min-width: 120px; }
 .weights input { width: 120px; accent-color: var(--accent); }
@@ -143,10 +144,16 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
     <div class="filters">
       <div>
         <div class="meta" style="margin-bottom:4px">Regions</div>
-        <div class="checks" id="regionChecks"><span class="meta">Regions appear once a lender is loaded.</span></div>
+        <div class="checks">
+          <span class="checks" id="regionChecks"><span class="meta">Regions appear once loans start loading.</span></span>
+          <label class="inline" title="G7: U.S. (and territories), Canada, U.K., France, Germany, Italy, Japan. G20 adds Argentina, Australia, Brazil, China, India, Indonesia, Mexico, Russia, Saudi Arabia, South Africa, South Korea and Turkey (member countries only, not the EU or African Union).">
+            Exclude <select id="excludeGroup">
+              <option value="none">none</option><option value="g7">G7</option><option value="g20">G20</option>
+            </select>
+          </label>
+        </div>
       </div>
       <div class="checks">
-        <label><input type="checkbox" id="excludeUSCA"> Exclude U.S. &amp; Canada</label>
         <label><input type="checkbox" id="womenOnly"> Women borrowers only</label>
         <label><input type="checkbox" id="hideOwned"> Hide loans we're already in</label>
       </div>
@@ -224,9 +231,22 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
 
 <script>
 const API = 'https://gateway.production.kiva.org/graphql';
-const EXCLUDED = new Set(['US', 'CA', 'PR', 'GU', 'VI']);
+// Country groups that can be excluded. U.S. territories count with the U.S.; the G20's EU and
+// African Union seats are left out so that excluding the G20 doesn't remove all of Africa.
+const G7 = ['US', 'PR', 'GU', 'VI', 'CA', 'GB', 'FR', 'DE', 'IT', 'JP'];
+const EXCLUDE_GROUPS = {
+  none: new Set(),
+  g7: new Set(G7),
+  g20: new Set([...G7, 'AR', 'AU', 'BR', 'CN', 'IN', 'ID', 'MX', 'RU', 'SA', 'ZA', 'KR', 'TR']),
+};
+const isExcludedCountry = iso => (EXCLUDE_GROUPS[settings.excludeGroup] || EXCLUDE_GROUPS.none).has(iso);
+// Searches saved before G7/G20 existed had an "Exclude U.S. & Canada" checkbox
+function migrateSearch(s) {
+  if ('excludeUSCA' in s) { if (!s.excludeGroup) s.excludeGroup = s.excludeUSCA ? 'g7' : 'none'; delete s.excludeUSCA; }
+  return s;
+}
 // The settings that make up a saved or recent search
-const SEARCH_KEYS = ['regions', 'excluded', 'excludeUSCA', 'womenOnly', 'hideOwned', 'maxTerm', 'maxDefault', 'minFunded',
+const SEARCH_KEYS = ['regions', 'excluded', 'excludeGroup', 'womenOnly', 'hideOwned', 'maxTerm', 'maxDefault', 'minFunded',
   'maxLeft', 'maxDays', 'sortBy', 'wFam', 'wNew', 'wBadge', 'wUrg'];
 const RECENT_MAX = 5;
 const BADGE_NAMES = {
@@ -243,7 +263,7 @@ const TAB_HELP = {
 };
 // excluded: countries (ISO codes), sectors and activities the visitor has chosen to hide
 const noExclusions = () => ({ country: [], sector: [], activity: [] });
-const DEFAULTS = { lender: '', regions: ['Central America', 'South America'], excludeUSCA: true, womenOnly: true, hideOwned: true,
+const DEFAULTS = { lender: '', regions: ['Central America', 'South America'], excludeGroup: 'g7', womenOnly: true, hideOwned: true,
   maxTerm: '0', maxDefault: '100', minFunded: '0', maxLeft: '0', maxDays: '0', sortBy: 'score',
   wFam: 30, wNew: 45, wBadge: 25, wUrg: 15, tab: 'top' };
 const PAGE = 100, CONCURRENCY = 3, SHOW_STEP = 48;
@@ -269,6 +289,7 @@ function loadSettings() {
     s.regions = s.groups.flatMap(g => map[g] || []);
   }
   delete s.groups;
+  migrateSearch(s);
   const p = new URLSearchParams(location.search).get('lender');
   return { ...DEFAULTS, excluded: noExclusions(), ...s, ...(p ? { lender: p } : {}) };
 }
@@ -276,7 +297,10 @@ function saveSettings() { try { localStorage.setItem('kivaFinder', JSON.stringif
 
 // ---------- saved and recent searches ----------
 function loadSearches() {
-  try { const v = JSON.parse(localStorage.getItem('kivaFinderSearches')); if (v) return v; } catch (e) {}
+  try {
+    const v = JSON.parse(localStorage.getItem('kivaFinderSearches'));
+    if (v) { v.saved.forEach(x => migrateSearch(x.s)); v.recent.forEach(migrateSearch); return v; }
+  } catch (e) {}
   return { saved: [], recent: [] };
 }
 function storeSearches(v) { try { localStorage.setItem('kivaFinderSearches', JSON.stringify(v)); } catch (e) {} }
@@ -293,7 +317,8 @@ function describeSearch(s) {
   if (+s.maxLeft) parts.push(`≤$${s.maxLeft} left`);
   if (+s.maxDays) parts.push(`≤${s.maxDays} days`);
   if (+s.maxDefault < 100) parts.push(`default ≤${s.maxDefault}%`);
-  if (!s.excludeUSCA) parts.push('incl. U.S./Canada');
+  if (s.excludeGroup === 'none') parts.push('incl. G7');
+  if (s.excludeGroup === 'g20') parts.push('excl. G20');
   const hidden = s.excluded ? s.excluded.country.length + s.excluded.sector.length + s.excluded.activity.length : 0;
   if (hidden) parts.push(`${hidden} hidden`);
   return parts.join(' · ');
@@ -324,7 +349,7 @@ function renderSearches() {
 }
 
 function applySearch(s) {
-  Object.assign(settings, { excluded: noExclusions() }, JSON.parse(JSON.stringify(s)));
+  Object.assign(settings, { excluded: noExclusions() }, migrateSearch(JSON.parse(JSON.stringify(s))));
   saveSettings();
   syncControls();
   renderRegions();
@@ -462,7 +487,7 @@ async function fetchAllPages(query, filters, onProgress) {
 function allRegions() { return [...new Set(state.facets.map(f => f.region))].sort(); }
 function regionCountries() {
   const regions = settings.regions || allRegions();
-  return state.facets.filter(f => regions.includes(f.region) && !(settings.excludeUSCA && EXCLUDED.has(f.iso))).map(f => f.iso);
+  return state.facets.filter(f => regions.includes(f.region) && !isExcludedCountry(f.iso)).map(f => f.iso);
 }
 
 // AND our base filter into each of the badge's OR'd filter entries, intersecting country lists
@@ -631,7 +656,7 @@ function renderStats() {
   const inRegions = state.facets.filter(f => isos.has(f.iso));
   const covered = inRegions.filter(f => p.country[f.iso]).length;
   const gaps = inRegions.filter(f => f.count > 0 && !p.country[f.iso]).length;
-  const nextBadge = state.badges.filter(b => b.next && !(settings.excludeUSCA && b.id === 'us-economic-equality'))
+  const nextBadge = state.badges.filter(b => b.next && !(isExcludedCountry('US') && b.id === 'us-economic-equality'))
     .sort((a, b) => a.remaining - b.remaining)[0];
   $('stats').innerHTML = `
     <div class="stat"><b>${p.total}</b><small>loans by ${esc(p.name)}</small></div>
@@ -721,7 +746,7 @@ function renderBadgeTab(list) {
     const pct = done ? 100 : Math.round(100 * b.progress / b.next.target);
     const n = list.filter(l => b.loanIds.has(l.id)).length;
     const note = done ? 'Every tier complete'
-      : b.id === 'us-economic-equality' && settings.excludeUSCA ? 'U.S. loans only, which your settings exclude'
+      : b.id === 'us-economic-equality' && isExcludedCountry('US') ? 'U.S. loans only, which your settings exclude'
       : `${b.remaining} more to reach ${b.next.target} · ${n} matching loan${n === 1 ? '' : 's'}`;
     return `<button class="panel badgecard${state.badgeFocus === b.id ? ' on' : ''}" data-badge="${b.id}" ${done ? 'disabled' : ''}>
       <strong>${esc(b.name)}</strong> <span class="meta">${b.progress} loans</span>
@@ -786,7 +811,7 @@ function render() {
 // ---------- wiring ----------
 function syncControls() {
   $('lenderId').value = settings.lender;
-  $('excludeUSCA').checked = settings.excludeUSCA;
+  $('excludeGroup').value = settings.excludeGroup;
   $('womenOnly').checked = settings.womenOnly;
   $('hideOwned').checked = settings.hideOwned;
   ['maxTerm', 'maxDefault', 'minFunded', 'maxLeft', 'maxDays', 'sortBy', 'wFam', 'wNew', 'wBadge', 'wUrg'].forEach(k => { $(k).value = settings[k]; });
@@ -797,7 +822,7 @@ function renderRegions() {
   if (!state.facets.length) return;
   const regions = settings.regions || allRegions();
   $('regionChecks').innerHTML = allRegions().map(r => {
-    const n = state.facets.filter(f => f.region === r && !(settings.excludeUSCA && EXCLUDED.has(f.iso)))
+    const n = state.facets.filter(f => f.region === r && !isExcludedCountry(f.iso))
       .reduce((t, f) => t + f.count, 0);
     return `<label><input type="checkbox" value="${esc(r)}" ${regions.includes(r) ? 'checked' : ''}> ${esc(r)} <span class="meta">${n.toLocaleString()}</span></label>`;
   }).join('');
@@ -857,8 +882,8 @@ $('regionChecks').addEventListener('change', () => {
   settings.regions = [...document.querySelectorAll('#regionChecks input:checked')].map(i => i.value);
   searchChanged(); renderSearches(); renderStats(); refreshPool();
 });
-$('excludeUSCA').addEventListener('change', e => {
-  settings.excludeUSCA = e.target.checked; searchChanged(); renderSearches(); renderRegions(); renderStats(); refreshPool();
+$('excludeGroup').addEventListener('change', e => {
+  settings.excludeGroup = e.target.value; searchChanged(); renderSearches(); renderRegions(); renderStats(); refreshPool();
 });
 $('womenOnly').addEventListener('change', e => { settings.womenOnly = e.target.checked; searchChanged(); renderSearches(); refreshPool(); });
 $('hideOwned').addEventListener('change', e => { settings.hideOwned = e.target.checked; searchChanged(); renderSearches(); render(); });
