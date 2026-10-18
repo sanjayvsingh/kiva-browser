@@ -33,7 +33,57 @@
 body { margin: 0; background: var(--bg); color: var(--text);
   font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 a { color: var(--accent-text); }
-.wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+.wrap { max-width: 1480px; margin: 0 auto; padding: 16px; }
+/* Layout: sticky filter sidebar beside the results; a slide-in drawer on narrow screens */
+.layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 20px; align-items: start; }
+body.filters-closed .layout { grid-template-columns: minmax(0, 1fr); }
+body.filters-closed .sidebar { display: none; }
+.sidebar { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px; padding: 4px 14px 12px; box-shadow: var(--shadow); }
+.sidehead { display: flex; justify-content: space-between; align-items: center; padding: 10px 0 6px; }
+.sec { border-top: 1px solid var(--border); padding: 8px 0; }
+.sec:first-of-type { border-top: 0; }
+.sec summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 4px 0; list-style: none; }
+.sec summary::-webkit-details-marker { display: none; }
+.sec summary::before { content: '▸'; display: inline-block; width: 14px; color: var(--muted); transition: transform .15s; }
+.sec[open] summary::before { transform: rotate(90deg); }
+.sec > *:not(summary) { margin-top: 8px; }
+.sec select, .sec input[type=text] { width: 100%; }
+.sec .row { display: flex; gap: 6px; align-items: center; font-size: 14px; }
+.sec .row input[type=text] { flex: 1; min-width: 0; }
+.sec .row select { width: auto; flex: 1; }
+.stack { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.stack label { display: flex; align-items: center; gap: 6px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.count { display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--accent-soft);
+  color: var(--accent-text); font-size: 11px; font-weight: 600; text-align: center; }
+.count:empty { display: none; }
+.pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.pills button { padding: 3px 9px; font-size: 13px; border-radius: 999px; }
+.pills button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme="dark"] .pills button.on { color: #0d1a12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pills button.on { color: #0d1a12; } }
+button.link { border: 0; background: none; padding: 0; color: var(--accent-text); text-decoration: underline; font-size: 13px; }
+#resetBtn { margin-top: 10px; }
+.statline { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.statline b { color: var(--text); font-size: 15px; font-variant-numeric: tabular-nums; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.toolbar input[type=search] { flex: 1 1 200px; min-width: 0; }
+.toolbar label { display: flex; align-items: center; gap: 6px; }
+#filtersBtn { display: none; }
+body.filters-closed #filtersBtn { display: inline-block; }
+.criteria { margin: 0 0 12px; }
+.criteria .chip { font-size: 13px; padding: 3px 10px; }
+.criteria .chip.region { cursor: pointer; }
+.backdrop { display: none; }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  #filtersBtn { display: inline-block; }
+  .sidebar, body.filters-closed .sidebar { display: block; position: fixed; z-index: 20; top: 0; left: 0; bottom: 0;
+    width: min(320px, 88vw); max-height: none; border-radius: 0 12px 12px 0; transform: translateX(-105%); transition: transform .2s; }
+  body.drawer-open .sidebar { transform: none; }
+  body.drawer-open .backdrop { display: block; position: fixed; inset: 0; z-index: 19; background: rgba(0,0,0,.35); }
+}
 header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; }
 h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
 h1 span { color: var(--accent); }
@@ -50,22 +100,10 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .status { color: var(--muted); font-size: 13px; min-height: 20px; margin: 8px 0; }
 .status.err { color: var(--warn); }
 .status button.link { border: 0; background: none; padding: 0 0 0 6px; color: var(--accent-text); text-decoration: underline; font-size: inherit; }
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
-.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; box-shadow: var(--shadow); }
-.stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
-.stat small { color: var(--muted); }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); }
-.filters { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end; }
-.filters > div:first-child { flex-basis: 100%; }
-.searchbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
-.searchbar select { max-width: 100%; min-width: 0; flex: 1 1 260px; }
-.filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
-.filters .checks { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text); font-size: 14px; }
-.filters .checks label { flex-direction: row; align-items: center; color: var(--text); font-size: 14px; gap: 6px; }
-.filters .checks label.inline select { padding: 2px 6px; }
-.weights { display: flex; gap: 14px; flex-wrap: wrap; }
-.weights label { min-width: 120px; }
-.weights input { width: 120px; accent-color: var(--accent); }
+.weights { display: flex; flex-direction: column; gap: 6px; }
+.weights label { display: flex; justify-content: space-between; align-items: center; font-size: 13px; gap: 8px; }
+.weights input { width: 140px; accent-color: var(--accent); }
 .chiprow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; border-radius: 999px;
   padding: 2px 9px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
@@ -84,7 +122,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg);
   border-radius: 10px; padding: 10px 14px; font-size: 14px; box-shadow: 0 4px 16px rgba(0,0,0,.2); z-index: 10; max-width: calc(100% - 32px); }
 .toast button { border: 0; background: none; color: inherit; text-decoration: underline; font-weight: 600; padding: 0 0 0 8px; }
-nav.tabs { display: flex; gap: 4px; margin: 16px 0 12px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+nav.tabs { display: flex; gap: 4px; margin: 8px 0 12px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+nav.tabs::-webkit-scrollbar { display: none; }
 nav.tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none;
   padding: 8px 14px; color: var(--muted); white-space: nowrap; }
 nav.tabs button.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
@@ -132,86 +171,97 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
   </header>
   <div class="status" id="status"></div>
 
-  <div class="stats" id="stats"></div>
-
-  <section class="panel">
-    <div class="searchbar">
-      <select id="savedSel" aria-label="Saved and recent searches"></select>
-      <input type="text" id="saveName" placeholder="Name this search" size="18">
-      <button type="button" id="saveBtn">Save search</button>
-      <button type="button" id="delBtn" hidden>Delete</button>
+  <div class="layout">
+  <div class="backdrop" id="backdrop"></div>
+  <aside class="sidebar" id="sidebar" aria-label="Filters">
+    <div class="sidehead">
+      <strong>Filters</strong>
+      <button type="button" class="link" id="closeFilters">Hide</button>
     </div>
-    <div class="filters">
-      <div>
-        <div class="meta" style="margin-bottom:4px">Regions</div>
-        <div class="checks">
-          <span class="checks" id="regionChecks"><span class="meta">Regions appear once loans start loading.</span></span>
-          <label class="inline" title="G7: U.S. (and territories), Canada, U.K., France, Germany, Italy, Japan. G20 adds Argentina, Australia, Brazil, China, India, Indonesia, Mexico, Russia, Saudi Arabia, South Africa, South Korea and Turkey (member countries only, not the EU or African Union).">
-            Exclude <select id="excludeGroup">
-              <option value="none">none</option><option value="g7">G7</option><option value="g20">G20</option>
-            </select>
-          </label>
-        </div>
+
+    <details class="sec" data-sec="searches" open>
+      <summary>Saved searches</summary>
+      <select id="savedSel" aria-label="Saved and recent searches"></select>
+      <div class="row">
+        <input type="text" id="saveName" placeholder="Name this search">
+        <button type="button" id="saveBtn">Save</button>
       </div>
-      <div class="checks">
+      <button type="button" class="link" id="delBtn" hidden>Delete this saved search</button>
+    </details>
+
+    <details class="sec" data-sec="regions" open>
+      <summary>Regions <span class="count" id="cntRegions"></span></summary>
+      <div class="stack" id="regionChecks"><span class="meta">Regions appear once loans start loading.</span></div>
+      <label class="row" title="G7: U.S. (and territories), Canada, U.K., France, Germany, Italy, Japan. G20 adds Argentina, Australia, Brazil, China, India, Indonesia, Mexico, Russia, Saudi Arabia, South Africa, South Korea and Turkey (member countries only, not the EU or African Union).">
+        Exclude <select id="excludeGroup">
+          <option value="none">none</option><option value="g7">G7 countries</option><option value="g20">G20 countries</option>
+        </select>
+      </label>
+    </details>
+
+    <details class="sec" data-sec="loan" open>
+      <summary>Borrower &amp; loan <span class="count" id="cntLoan"></span></summary>
+      <div class="stack">
         <label><input type="checkbox" id="womenOnly"> Women borrowers only</label>
         <label><input type="checkbox" id="hideOwned"> Hide loans we're already in</label>
       </div>
-      <label>Max repayment term
+      <label class="field">Max repayment term
         <select id="maxTerm">
-          <option value="0">Any</option><option>6</option><option>8</option><option>10</option>
-          <option>12</option><option>14</option><option>18</option><option>24</option><option>36</option>
+          <option value="0">Any</option><option value="6">6 months</option><option value="8">8 months</option>
+          <option value="10">10 months</option><option value="12">12 months</option><option value="14">14 months</option>
+          <option value="18">18 months</option><option value="24">24 months</option><option value="36">36 months</option>
         </select>
       </label>
-      <label title="Share of past loans through this loan's local lender that were never repaid">Max default rate
+      <label class="field" title="Share of past loans through this loan's local lender that were never repaid">Max default rate
         <select id="maxDefault">
           <option value="100">Any</option><option value="1">1%</option><option value="2">2%</option>
           <option value="3">3%</option><option value="5">5%</option>
         </select>
       </label>
-      <label>Min funded
-        <select id="minFunded">
-          <option value="0">Any</option><option value="25">25%</option><option value="50">50%</option>
-          <option value="75">75%</option><option value="90">90%</option>
-        </select>
-      </label>
-      <label>Max left to fund
-        <select id="maxLeft">
-          <option value="0">Any</option><option value="25">$25</option><option value="50">$50</option>
-          <option value="100">$100</option><option value="250">$250</option><option value="500">$500</option>
-        </select>
-      </label>
-      <label>Max days left
-        <select id="maxDays">
-          <option value="0">Any</option><option>3</option><option>7</option><option>14</option><option>30</option>
-        </select>
-      </label>
-      <label>Sort
-        <select id="sortBy">
-          <option value="score">Best match</option>
-          <option value="left">Least left to fund</option>
-          <option value="funded">Most funded</option>
-          <option value="expiring">Expiring soonest</option>
-          <option value="term">Shortest term</option>
-        </select>
-      </label>
-      <label>Search
-        <input type="search" id="search" placeholder="name, use, activity…" size="18">
-      </label>
-    </div>
-    <details id="weights" style="margin-top:10px">
-      <summary class="meta" style="cursor:pointer">Top picks weighting</summary>
-      <div class="weights" style="margin-top:8px">
+    </details>
+
+    <details class="sec" data-sec="funding" open>
+      <summary>Funding <span class="count" id="cntFunding"></span></summary>
+      <div class="field">Min funded
+        <div class="pills" data-key="minFunded">
+          <button data-v="0">Any</button><button data-v="25">25%</button><button data-v="50">50%</button>
+          <button data-v="75">75%</button><button data-v="90">90%</button>
+        </div>
+      </div>
+      <div class="field">Max left to fund
+        <div class="pills" data-key="maxLeft">
+          <button data-v="0">Any</button><button data-v="25">$25</button><button data-v="50">$50</button>
+          <button data-v="100">$100</button><button data-v="250">$250</button><button data-v="500">$500</button>
+        </div>
+      </div>
+      <div class="field">Max days left
+        <div class="pills" data-key="maxDays">
+          <button data-v="0">Any</button><button data-v="3">3</button><button data-v="7">7</button>
+          <button data-v="14">14</button><button data-v="30">30</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="sec" data-sec="weights" id="weights">
+      <summary>Top picks weighting</summary>
+      <div class="weights">
         <label>Familiar <input type="range" min="0" max="100" id="wFam"></label>
         <label>New to us <input type="range" min="0" max="100" id="wNew"></label>
         <label>Achievements <input type="range" min="0" max="100" id="wBadge"></label>
         <label title="Nearly funded, little left to raise, or expiring soon">Urgency <input type="range" min="0" max="100" id="wUrg"></label>
       </div>
     </details>
-    <div class="chiprow" id="excludedRow" hidden><span class="meta">Hidden:</span><span class="chiprow" id="excludedChips" style="margin:0"></span></div>
-    <div class="chiprow" id="activeChips"></div>
-  </section>
-  <div class="toast" id="toast" role="status" hidden></div>
+
+    <details class="sec" data-sec="hidden" id="secHidden" open hidden>
+      <summary>Hidden <span class="count" id="cntHidden"></span></summary>
+      <div class="chiprow" id="excludedChips"></div>
+    </details>
+
+    <button type="button" class="link" id="resetBtn">Reset filters to defaults</button>
+  </aside>
+
+  <main>
+  <div class="statline" id="stats"></div>
 
   <nav class="tabs" id="tabs">
     <button data-tab="top" class="on">Top picks</button>
@@ -221,12 +271,29 @@ footer { color: var(--muted); font-size: 12px; margin: 24px 0 8px; }
     <button data-tab="coverage">Country coverage</button>
   </nav>
   <p class="tabhelp" id="tabHelp"></p>
+  <div class="toolbar">
+    <button type="button" id="filtersBtn">☰ Filters <span class="count" id="cntAll"></span></button>
+    <input type="search" id="search" placeholder="Search name, use, activity…" aria-label="Search loans">
+    <label class="meta">Sort
+      <select id="sortBy">
+        <option value="score">Best match</option>
+        <option value="left">Least left to fund</option>
+        <option value="funded">Most funded</option>
+        <option value="expiring">Expiring soonest</option>
+        <option value="term">Shortest term</option>
+      </select>
+    </label>
+  </div>
+  <div class="chiprow criteria" id="criteria"></div>
   <div id="view"></div>
 
   <footer>
     Read-only: data comes live from Kiva's public GraphQL API, and nothing is sent anywhere else. Lending happens on kiva.org.
     Your lender page must be public for your portfolio and badges to load.
   </footer>
+  </main>
+  </div>
+  <div class="toast" id="toast" role="status" hidden></div>
 </div>
 
 <script>
@@ -265,7 +332,7 @@ const TAB_HELP = {
 const noExclusions = () => ({ country: [], sector: [], activity: [] });
 const DEFAULTS = { lender: '', regions: ['Central America', 'South America'], excludeGroup: 'g7', womenOnly: true, hideOwned: true,
   maxTerm: '0', maxDefault: '100', minFunded: '0', maxLeft: '0', maxDays: '0', sortBy: 'score',
-  wFam: 30, wNew: 45, wBadge: 25, wUrg: 15, tab: 'top' };
+  wFam: 30, wNew: 45, wBadge: 25, wUrg: 15, tab: 'top', sidebarOpen: true, closedSecs: ['weights'] };
 const PAGE = 100, CONCURRENCY = 3, SHOW_STEP = 48;
 
 // ---------- state ----------
@@ -659,24 +726,89 @@ function renderStats() {
   const nextBadge = state.badges.filter(b => b.next && !(isExcludedCountry('US') && b.id === 'us-economic-equality'))
     .sort((a, b) => a.remaining - b.remaining)[0];
   $('stats').innerHTML = `
-    <div class="stat"><b>${p.total}</b><small>loans by ${esc(p.name)}</small></div>
-    <div class="stat"><b>${Object.keys(p.country).length}</b><small>countries overall</small></div>
-    <div class="stat"><b>${covered} / ${inRegions.length}</b><small>countries covered in your selected regions</small></div>
-    <div class="stat"><b>${gaps}</b><small>new-to-you countries with loans available now</small></div>
-    ${nextBadge ? `<div class="stat"><b>${nextBadge.remaining}</b><small>loan${nextBadge.remaining > 1 ? 's' : ''} to the next ${esc(nextBadge.name)} tier</small></div>` : ''}`;
+    <span><b>${p.total}</b> loans by ${esc(p.name)}</span>
+    <span><b>${Object.keys(p.country).length}</b> countries overall</span>
+    <span><b>${covered}/${inRegions.length}</b> countries covered in selected regions</span>
+    <span><b>${gaps}</b> new-to-you countries available</span>
+    ${nextBadge ? `<span><b>${nextBadge.remaining}</b> loan${nextBadge.remaining > 1 ? 's' : ''} to the next ${esc(nextBadge.name)} tier</span>` : ''}`;
 }
 
-function renderChips() {
-  const chips = [];
+// ---------- filter criteria shown above the results ----------
+// The "off" value of each filter, used by the ✕ on its criteria chip
+const FILTER_OFF = { excludeGroup: 'none', womenOnly: false, maxTerm: '0', maxDefault: '100', minFunded: '0', maxLeft: '0', maxDays: '0' };
+const POOL_FILTERS = ['excludeGroup', 'womenOnly'];   // these change which loans are downloaded
+
+function filterCounts() {
+  const ex = settings.excluded;
+  const loan = (settings.womenOnly ? 1 : 0) + (+settings.maxTerm ? 1 : 0) + (+settings.maxDefault < 100 ? 1 : 0);
+  const funding = ['minFunded', 'maxLeft', 'maxDays'].filter(k => +settings[k]).length;
+  const hidden = ex.country.length + ex.sector.length + ex.activity.length;
+  return { loan, funding, hidden, all: loan + funding + hidden + (settings.excludeGroup !== 'none' ? 1 : 0) };
+}
+
+function renderCriteria() {
+  const c = filterCounts();
+  const regions = settings.regions || allRegions();
+  $('cntRegions').textContent = regions.length || '';
+  $('cntLoan').textContent = c.loan || '';
+  $('cntFunding').textContent = c.funding || '';
+  $('cntHidden').textContent = c.hidden || '';
+  $('cntAll').textContent = c.all || '';
+
+  const chip = (label, attrs, cls = '') => `<span class="chip ${cls}">${esc(label)}${attrs ? `<button ${attrs} aria-label="Remove">✕</button>` : ''}</span>`;
+  const out = [];
+  out.push(`<span class="chip region" data-open="regions" title="Change regions">${esc(regions.length ? regions.join(', ') : 'No regions selected')}</span>`);
+  if (settings.excludeGroup !== 'none') out.push(chip(`Excluding ${settings.excludeGroup.toUpperCase()}`, 'data-reset="excludeGroup"'));
+  if (settings.womenOnly) out.push(chip('Women borrowers', 'data-reset="womenOnly"'));
+  if (+settings.maxTerm) out.push(chip(`Term ≤ ${settings.maxTerm} mo`, 'data-reset="maxTerm"'));
+  if (+settings.maxDefault < 100) out.push(chip(`Default rate ≤ ${settings.maxDefault}%`, 'data-reset="maxDefault"'));
+  if (+settings.minFunded) out.push(chip(`≥ ${settings.minFunded}% funded`, 'data-reset="minFunded"'));
+  if (+settings.maxLeft) out.push(chip(`≤ $${settings.maxLeft} left`, 'data-reset="maxLeft"'));
+  if (+settings.maxDays) out.push(chip(`≤ ${settings.maxDays} days left`, 'data-reset="maxDays"'));
+  ['country', 'sector', 'activity'].forEach(dim => settings.excluded[dim].forEach(val =>
+    out.push(chip(`Hiding ${excludedName(dim, val)}`, `data-unexclude="${dim}" data-val="${esc(val)}"`))));
+  const q = $('search').value.trim();
+  if (q) out.push(chip(`“${q}”`, 'data-clear="search"'));
   if (state.countryFilter) {
     const f = state.facets.find(x => x.iso === state.countryFilter);
-    chips.push(`<span class="chip">Country: ${esc(f ? f.name : state.countryFilter)}<button data-clear="country" aria-label="Clear">✕</button></span>`);
+    out.push(chip(`Only ${f ? f.name : state.countryFilter}`, 'data-clear="country"'));
   }
   if (state.badgeFocus && settings.tab === 'badge') {
     const b = state.badges.find(x => x.id === state.badgeFocus);
-    chips.push(`<span class="chip badge">Badge: ${esc(b.name)}<button data-clear="badge" aria-label="Clear">✕</button></span>`);
+    out.push(chip(`Badge: ${b.name}`, 'data-clear="badge"', 'badge'));
   }
-  $('activeChips').innerHTML = chips.join('');
+  $('criteria').innerHTML = out.join('');
+}
+
+// After any filter change: remember it, update the controls, then re-download or just re-rank
+function afterFilterChange(needsPool) {
+  searchChanged(); syncControls(); renderSearches(); renderRegions(); renderStats();
+  state.shown = SHOW_STEP;
+  if (needsPool) refreshPool(); else render();
+}
+function resetFilter(key) { settings[key] = FILTER_OFF[key]; afterFilterChange(POOL_FILTERS.includes(key)); }
+function resetAllFilters() {
+  ['excludeGroup', 'womenOnly', 'maxTerm', 'maxDefault', 'minFunded', 'maxLeft', 'maxDays'].forEach(k => { settings[k] = DEFAULTS[k]; });
+  settings.regions = DEFAULTS.regions.slice();
+  settings.excluded = noExclusions();
+  $('search').value = '';
+  state.countryFilter = null;
+  renderExcluded();
+  afterFilterChange(true);
+}
+
+// ---------- sidebar open/closed (drawer on narrow screens) ----------
+const isNarrow = () => matchMedia('(max-width: 900px)').matches;
+function applySidebar() { document.body.classList.toggle('filters-closed', !settings.sidebarOpen); }
+function openFilters(section) {
+  if (isNarrow()) document.body.classList.add('drawer-open');
+  else { settings.sidebarOpen = true; saveSettings(); applySidebar(); }
+  const sec = section && document.querySelector(`.sec[data-sec="${section}"]`);
+  if (sec) { sec.open = true; sec.scrollIntoView({ block: 'nearest' }); }
+}
+function closeFilters() {
+  if (isNarrow()) document.body.classList.remove('drawer-open');
+  else { settings.sidebarOpen = false; saveSettings(); applySidebar(); }
 }
 
 // ---------- hiding countries, sectors and activities ----------
@@ -700,7 +832,7 @@ function renderExcluded() {
   const ex = settings.excluded;
   const chips = ['country', 'sector', 'activity'].flatMap(dim => ex[dim].map(val =>
     `<span class="chip">${esc(excludedName(dim, val))}<button data-unexclude="${dim}" data-val="${esc(val)}" aria-label="Show ${esc(excludedName(dim, val))} again">✕</button></span>`));
-  $('excludedRow').hidden = !chips.length;
+  $('secHidden').hidden = !chips.length;
   $('excludedChips').innerHTML = chips.join('');
 }
 let toastTimer;
@@ -796,7 +928,7 @@ function render() {
   $('weights').hidden = anon;
   $('hideOwned').closest('label').hidden = anon;
   $('tabHelp').textContent = anon ? TAB_HELP.anon : TAB_HELP[tab];
-  renderChips();
+  renderCriteria();
   if (!state.portfolio) return;
   const view = $('view');
   if (tab === 'coverage') { view.innerHTML = renderCoverage(); return; }
@@ -814,7 +946,9 @@ function syncControls() {
   $('excludeGroup').value = settings.excludeGroup;
   $('womenOnly').checked = settings.womenOnly;
   $('hideOwned').checked = settings.hideOwned;
-  ['maxTerm', 'maxDefault', 'minFunded', 'maxLeft', 'maxDays', 'sortBy', 'wFam', 'wNew', 'wBadge', 'wUrg'].forEach(k => { $(k).value = settings[k]; });
+  ['maxTerm', 'maxDefault', 'sortBy', 'wFam', 'wNew', 'wBadge', 'wUrg'].forEach(k => { $(k).value = settings[k]; });
+  document.querySelectorAll('.pills').forEach(p => p.querySelectorAll('button').forEach(b =>
+    b.classList.toggle('on', b.dataset.v === String(settings[p.dataset.key]))));
 }
 
 // Region checkboxes come from Kiva's own region list, with fundraising loan counts
@@ -880,14 +1014,38 @@ $('status').addEventListener('click', e => {
 });
 $('regionChecks').addEventListener('change', () => {
   settings.regions = [...document.querySelectorAll('#regionChecks input:checked')].map(i => i.value);
-  searchChanged(); renderSearches(); renderStats(); refreshPool();
+  afterFilterChange(true);
 });
-$('excludeGroup').addEventListener('change', e => {
-  settings.excludeGroup = e.target.value; searchChanged(); renderSearches(); renderRegions(); renderStats(); refreshPool();
+$('excludeGroup').addEventListener('change', e => { settings.excludeGroup = e.target.value; afterFilterChange(true); });
+$('womenOnly').addEventListener('change', e => { settings.womenOnly = e.target.checked; afterFilterChange(true); });
+$('hideOwned').addEventListener('change', e => { settings.hideOwned = e.target.checked; afterFilterChange(false); });
+['maxTerm', 'maxDefault', 'sortBy'].forEach(k => $(k).addEventListener('change', e => { settings[k] = e.target.value; afterFilterChange(false); }));
+$('sidebar').addEventListener('click', e => {
+  const b = e.target.closest('.pills button'); if (!b) return;
+  settings[b.closest('.pills').dataset.key] = b.dataset.v;
+  afterFilterChange(false);
 });
-$('womenOnly').addEventListener('change', e => { settings.womenOnly = e.target.checked; searchChanged(); renderSearches(); refreshPool(); });
-$('hideOwned').addEventListener('change', e => { settings.hideOwned = e.target.checked; searchChanged(); renderSearches(); render(); });
-['maxTerm', 'maxDefault', 'minFunded', 'maxLeft', 'maxDays', 'sortBy'].forEach(k => $(k).addEventListener('change', e => { settings[k] = e.target.value; searchChanged(); renderSearches(); state.shown = SHOW_STEP; render(); }));
+// Remember which sidebar sections are collapsed
+document.querySelectorAll('.sec').forEach(d => {
+  d.open = !settings.closedSecs.includes(d.dataset.sec);
+  d.addEventListener('toggle', () => {
+    settings.closedSecs = [...document.querySelectorAll('.sec')].filter(x => !x.open).map(x => x.dataset.sec);
+    saveSettings();
+  });
+});
+$('filtersBtn').addEventListener('click', () => openFilters());
+$('closeFilters').addEventListener('click', closeFilters);
+$('backdrop').addEventListener('click', closeFilters);
+$('resetBtn').addEventListener('click', resetAllFilters);
+$('criteria').addEventListener('click', e => {
+  if (e.target.closest('[data-open]')) { openFilters(e.target.closest('[data-open]').dataset.open); return; }
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.reset) resetFilter(b.dataset.reset);
+  else if (b.dataset.unexclude) setExcluded(b.dataset.unexclude, b.dataset.val, false);
+  else if (b.dataset.clear === 'search') { $('search').value = ''; state.shown = SHOW_STEP; render(); }
+  else if (b.dataset.clear === 'country') { state.countryFilter = null; render(); }
+  else if (b.dataset.clear === 'badge') { state.badgeFocus = null; render(); }
+});
 ['wFam', 'wNew', 'wBadge', 'wUrg'].forEach(k => $(k).addEventListener('input', e => { settings[k] = +e.target.value; searchChanged(); render(); }));
 $('savedSel').addEventListener('change', e => {
   const v = loadSearches(), val = e.target.value;
@@ -931,11 +1089,6 @@ $('view').addEventListener('click', e => {
   else if (b.dataset.country) { state.countryFilter = b.dataset.country; settings.tab = 'top'; state.shown = SHOW_STEP; render(); window.scrollTo(0, 0); }
   else if (b.dataset.badge) { state.badgeFocus = state.badgeFocus === b.dataset.badge ? null : b.dataset.badge; state.shown = SHOW_STEP; render(); }
 });
-$('activeChips').addEventListener('click', e => {
-  const b = e.target.closest('button[data-clear]'); if (!b) return;
-  if (b.dataset.clear === 'country') state.countryFilter = null; else state.badgeFocus = null;
-  render();
-});
 $('themeBtn').addEventListener('click', () => {
   const root = document.documentElement;
   const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
@@ -945,6 +1098,7 @@ $('themeBtn').addEventListener('click', () => {
 try { const t = localStorage.getItem('kivaFinderTheme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 
 syncControls();
+applySidebar();
 render();
 loadAll();
 </script>
